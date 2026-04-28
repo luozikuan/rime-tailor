@@ -1,0 +1,94 @@
+# Rime schema
+# encoding: utf-8
+
+__include: pinyin.schema:/
+
+schema:
+  schema_id: pinyin_17key
+  name: 乱序17键
+  version: "1.0"
+  author:
+    - 发明人 林敬钏
+  description: |
+    林氏乱序17键
+  dependencies:
+    # - wubi
+
+engine:
+  filters:
+    - "lua_filter@*17key_preedit"   # MARK: 动态计算预编辑区的拼音
+    - "lua_filter@*date_ts"
+    - "lua_filter@*autocap_filter"
+    - "simplifier@es_conversion"
+    - "simplifier@personal"
+    - uniquifier
+
+preedit_format_乱序17键:
+  __append:
+    - xform/([nl])v/$1ü/
+    - xform/([nl])ue/$1üe/
+    - xform/([nl])üen/$1uen/
+    - xform/([jqxy])v/$1u/
+    - xform/eh/ê/
+
+speller:
+  algebra:
+    __include: common.yaml:/algebra/wanxiang_tone_to_1234
+    __append:
+      - xform/^r5$/er5/
+      # 省略聲調
+      - derive/^([a-z]+)[0-5]$/$1/
+      - 'erase/^.*5$/'
+
+      # 乱序17键
+      - erase/^xx(\d|$)/ # 清理词典中的xx
+      - derive/^([jqxy])u(\d|$)/$1v$2/ # 将词典中的u同时指向u和v
+      - xform/^([aoe].*)(\d|$)/q$1$2/ # 零声母处理
+
+      # 韵母映射
+      - xform/iong/B/
+      - xform/iang/C/
+      - xform/uang/Q/
+      - xform/iao|ang/Z/
+      - xform/ua[in]/X/
+      - xform/[ei]ng/Y/
+      - xform/ian/Q/
+      - xform/ong/T/
+      - xform/[ei]n/S/
+      - xform/ao/B/
+      - xform/ie|uo/M/
+      - xform/ai|[uv]e/L/
+      - xform/an/N/
+      - xform/ui/C/
+      - xform/ei|un/G/
+      - xform/[io]u/F/
+      - xform/er/T/
+      - xform/[iu]?a/H/
+      - xform/o|v/X/
+      - xform/u/D/
+      - xform/e/W/
+      - xform/i/J/
+
+      # 声母映射
+      - xform/^p/H/
+      - xform/^sh/S/
+      - xform/^zh/Z/
+      - xform/^s/M/
+      - xform/^z/W/
+      - xform/^k/J/
+      - xform/^r/N/
+      - xform/^ch/C/
+      - xform/^c/F/
+
+      # 5. 按键还原
+      - xlit/HSZBXMLDYWJNCQGFT/hszbxmldywjncqgft/
+
+      # 符號標調
+      - 'xlit 1234 7890'
+
+translator:
+  prism: pinyin_17key
+  preedit_format:               # preedit_format 影响到输入框的显示和“Shift+回车”上屏的字符
+    __patch:
+      - common.yaml:/translator/preedit_7890_as_tone
+

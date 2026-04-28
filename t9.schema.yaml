@@ -1,0 +1,121 @@
+# Rime schema
+# encoding: utf-8
+
+__include: pinyin.schema:/
+
+schema:
+  schema_id: t9
+  name: 拼音九键
+  version: "1.0"
+  author:
+    - 发明人：佚名
+    - 方案制作：罗滋宽
+  description: |
+    拼音九键 for 元书输入法
+
+t9:
+  # 是否显示 rime 中原始的预编辑文本，默认为 true
+  # true: 对 preedit 不做处理，显示 rime 返回的原始 preedit 值。
+  #       如果想通过 lua 自己调整 preedit 的显示，可以设置为 true。
+  # false: 根据候选字 comment 显示转换后的 preedit 内容。
+  #        注意：请务必保证候选字 comment 有效且正确，否则可能导致预编辑文本显示异常。
+  isDisplayOriginalPreedit: false
+
+engine:
+  processors:
+    - t9_processor # 元书要求它必须在第一位
+    - ascii_composer
+    - recognizer
+    - key_binder
+    - lua_processor@*tone_fallback   # 放在 speller 之前
+    - speller
+    - punctuator
+    - selector
+    - navigator
+    - express_editor
+
+translator:
+  prism: t9
+  spelling_hints: 100
+  always_show_comments: true   # Rime 默认在 preedit 等于 comment 时取消显示 comment，这里强制一直显示，供 t9.
+  # comment_format: []
+
+# 自定义短语：custom_phrase_t9.txt
+# ⚠️ 编码要用数字
+custom_phrase:
+  dictionary: ""
+  user_dict: custom_phrase_t9
+  db_class: stabledb
+  enable_completion: false
+  enable_sentence: false
+  initial_quality: 99
+
+# 九宫格 1 键上的符号序列
+punctuator:
+  half_shape:
+    "1": [1, "@", ".", "/", ":", "_", "-", "#"]
+    "@": [1, "@", ！, ：, 、, ……, ～]
+    "#": [1, "#", "$", "%", "^", "&", "*", "(", ")"]
+
+# 输入时按 1 可以分词
+key_binder:
+  bindings/+:
+    - { when: has_menu, accept: 1, send: apostrophe }
+    - { when: has_menu, accept: minus, send: minus }  # tone 1
+    - { when: paging, accept: minus, send: Page_Up }
+
+tone_fallback:
+  tone_chars: '-/<\'
+  exclude_patterns:
+    - "`"
+
+
+speller:
+  alphabet: 'zyxwvutsrqponmlkjihgfedcbaZYXWVUTSRQPONMLKJIHGFEDCBA987654321-/<\'
+  initials: zyxwvutsrqponmlkjihgfedcbaZYXWVUTSRQPONMLKJIHGFEDCBA987654321
+  finals: '-/<\'
+  algebra:
+    __include: common.yaml:/algebra/wanxiang_tone_to_1234
+    __append:
+      - xform/^r5$/er5/
+      # 省略韻母和聲調
+      - abbrev/^([a-z]).+$/$1/
+      - abbrev/^([zcs]h).+$/$1/
+      # 省略韻母
+      - abbrev/^([a-z])(.+)([0-5])$/$1$3/
+      - abbrev/^([zcs]h)(.+)([0-5])$/$1$3/
+      - derive/^([nl])ve/$1ue/
+      - derive/^([jqxy])u/$1v/
+      - derive/([dtnlgkhrzcs])un/$1uen/
+      - derive/ui/uei/
+      - derive/iu/iou/
+      - derive/ao/oa/
+      - derive/([aeiou])ng/$1gn/
+      - derive/([iu])a(o|ng?)/a$1$2/
+      # 省略聲調
+      - derive/^([a-z]+)[0-5]$/$1/
+      - derive/([dtngkhrzcs])o(u|ng)$/$1o/
+      - derive/ong$/on/
+      - 'erase/^.*5$/'
+      # 符號標調
+      - 'xlit 1234 -/<\'
+      # 9键
+      - derive/^(.*)$/\U$1/
+      - xform/[ABC]/2/
+      - xform/[DEF]/3/
+      - xform/[GHI]/4/
+      - xform/[JKL]/5/
+      - xform/[MNO]/6/
+      - xform/[PQRS]/7/
+      - xform/[TUV]/8/
+      - xform/[WXYZ]/9/
+
+
+translator:
+  prism: t9
+  spelling_hints: 5  # ～字以內候選標註完整帶調拼音
+  preedit_format:
+    __patch:
+      - pinyin.schema:/preedit_format_全拼
+      - common.yaml:/translator/preedit_minus_slash_less_backslash_as_tone
+      - common.yaml:/translator/preedit_show_tone

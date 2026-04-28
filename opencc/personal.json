@@ -1,0 +1,16 @@
+{
+  "name": "personal information",
+  "segmentation": {
+    "type": "mmseg",
+    "dict": {
+      "type": "text",
+      "file": "personal.txt"
+    }
+  },
+  "conversion_chain": [{
+    "dict": {
+      "type": "text",
+      "file": "personal.txt"
+    }
+  }]
+}

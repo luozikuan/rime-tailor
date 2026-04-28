@@ -1,0 +1,218 @@
+# encoding: utf-8
+
+schema:
+  schema_id: wubi
+  name: "新世纪五笔"
+  version: "1.0"
+  author:
+    - 发明人 王永民
+  description: |
+    敲z键进入拼音反查
+    敲~键以形查音
+    敲'键造词
+  dependencies:
+    - pinyin
+    - easy_en
+
+__include: common.yaml:/opencc_config
+__include: common.yaml:/punctuator
+__include: common.yaml:/easy_en
+
+switches:
+  __include: common.yaml:/switches/switches
+  __append:
+    - name: wubi_spelling
+      # reset: 0
+      states: [ 隐藏, 拆分 ]
+
+engine:
+  filters:
+    - simplifier
+    - "reverse_lookup_filter@ci_reverse_lookup"
+    - "reverse_lookup_filter@zhuyin_lookup"
+    - "simplifier@wubi_spelling"
+    - "lua_filter@*wubi_phrase_spelling"
+    - "lua_filter@*date_ts"
+    - "lua_filter@*autocap_filter"
+    - "simplifier@es_conversion"
+    - "simplifier@personal"
+    #↓以下1條為去重組件(此組件必須排到最後,不然會失效).
+    - uniquifier
+  processors:
+    - ascii_composer
+    - recognizer
+    - key_binder
+    - speller
+    - punctuator
+    - selector
+    - navigator
+    - express_editor
+  segmentors:
+    - ascii_segmentor
+    - matcher
+    - "affix_segmentor@mkst"
+    - "affix_segmentor@rvlk1"
+    - "affix_segmentor@zhuyin_fix"
+    - abc_segmentor
+    - punct_segmentor
+    - fallback_segmentor
+  translators:
+    - punct_translator
+    - reverse_lookup_translator
+    - "table_translator@rvlk1"
+    - table_translator
+    - "table_translator@fixed"
+    - "table_translator@mkst"
+    - "table_translator@zhuyin_fix"
+    - "history_translator@history"
+    - "lua_translator@*calculator_translator"
+    - "table_translator@easy_en"
+
+speller:
+  auto_select: false
+  auto_clear: max_length
+  delimiter: "'"
+  max_code_length: 10000
+  # 挂接的英文词库有时需要输入大写字母
+  alphabet: zyxwvutsrqponmlkjihgfedcbaZYXWVUTSRQPONMLKJIHGFEDCBA'
+  initials: zyxwvutsrqponmlkjihgfedcbaZYXWVUTSRQPONMLKJIHGFEDCBA'
+  auto_select_pattern: ^[\w]{4}$
+  algebra:  # 万能z键拼写处理，z符号匹配任意字符
+    # - derive/^(...).$/$1z/
+    # - derive/^(..).(.*)$/$1z$2/
+    # - derive/^(.).(.*)$/$1z$2/
+    # - derive/^.(.*)$/z$1/  # 开启本行将与z键重复上屏冲突
+
+translator:
+  dictionary: wubi.extended
+  db_class: tabledb
+  initial_quality: 100000
+  enable_charset_filter: false
+  enable_sentence: false  # 开启句子输入模式
+  enable_user_dict: false
+  enable_encoder: false
+  encode_commit_history: false
+  max_phrase_length: 4
+  enable_completion: false
+  # preedit_format:
+  #   - 'xlit|abcdefghijklmnopqrstuvwxyz|ａｂｃｄｅｆｇｈｉｊｋｌｍｎｏｐｑｒｓｔｕｖｗｘｙｚ|'
+  comment_format:
+    - xform/~//
+  # preedit_format:
+  #   - 'xform/^([a-z]*)$/$1\t〈\U$1\E〉/'  # 注释掉本行将只显示键名提示而不显示英文编码提示
+  #   - "xlit|ABCDEFGHIJKLMNOPQRSTUVWXY|工子又大月土王目水日口田山已火之金白木禾立女人幺言|"
+  disable_user_dict_for_patterns:
+    - "^z.*$"
+
+fixed:
+  dictionary: wubi.extended
+  db_class: tabledb
+  disable_user_dict_for_patterns:
+    - "^z.*$"
+  enable_charset_filter: false
+  enable_completion: false
+  enable_encoder: true  # 开启自动造词
+  enable_sentence: false
+  enable_user_dict: true  # 开启用户词典
+  encode_commit_history: false
+  initial_quality: 1000
+  max_phrase_length: 4
+
+mkst:
+  __include: /translator
+  initial_quality: 100
+  enable_sentence: true
+  prefix: "'"
+  tips: "〔精准造词〕"
+  tag: mkst
+
+reverse_lookup:
+  __include: /translator
+  dictionary: pinyin
+  tips: "〔拼音反查〕"
+  preedit_format:
+    - xform/([nl])v/$1ü/
+    - xform/([nl])ue/$1üe/
+    - xform/([jqxy])v/$1u/
+  tag: rvlk2
+
+rvlk1:
+  __include: /reverse_lookup
+  prefix: "z"
+  tag: rvlk1
+  extra_tags:
+    - rvlk2
+
+ci_reverse_lookup:
+  dictionary: wubi.extended
+  tips: "〔五笔滤镜〕"
+  tags:
+    - rvlk2
+
+zhuyin_fix:
+  __include: /translator
+  prefix: '~'
+  tips: "〔以形查音〕"
+  tag: zhuyin_fix
+
+wubi_spelling:
+  opencc_config: wubi_spelling.json
+  option_name: wubi_spelling
+  show_in_comment: true
+  comment_format:
+    - "xform/☯/ · /"
+  tags:
+    - abc
+    - rvlk1
+  tips: all
+
+zhuyin_lookup:
+  dictionary: pinyin
+  tags:
+    - zhuyin_fix
+  overwrite_comment: true
+  comment_format:
+    __include: common.yaml:/translator/pinyin_comment
+
+recognizer:
+  import_preset: default
+  patterns:
+    email: "^[A-Za-z][-_.0-9A-Za-z]*@.*$"
+    mkst: "^[a-y]*'[a-y']*$"
+    punct: "^/([0-9]0?|[A-Za-z]+)$"
+    rvlk1: "^z[a-z]*'?$"
+    rvlk2: "^z[a-z]*'?$"
+    zhuyin_fix: "~[a-y]*?$"
+    expression: "^=.*$"
+
+history:
+  input: z
+  size: 1
+  initial_quality: 1
+
+key_binder:
+  bindings:
+    #↓以下2條為左右方向鍵翻页
+    - {accept: Left, send: Page_Up, when: has_menu}
+    - {accept: Right, send: Page_Down, when: has_menu}
+    #↓以下2條為-與=翻頁(退格键左边两个键).
+    - {accept: minus, send: Page_Up, when: has_menu}
+    - {accept: equal, send: Page_Down, when: has_menu}
+    #↓以下1條為輸入狀態下空格退出輸入狀態.
+    - {accept: space, send: Escape, when: composing}
+    #↓以下1條為空格上屏候選項.（句前加#将变为空格清空当前编码）
+    - {accept: space, send: space, when: has_menu}
+    #↓以下1條為輸入狀態下回車退出輸入狀態.
+    # - {accept: Return, send: Escape, when: composing}
+    #↓以下1條為回車清空候選項.（句前加#将变为回车上屏当前编码,与上面一项同时注释才能生效）
+    # - {accept: Return, send: Escape, when: has_menu}
+    #↓以下為开关快捷键
+    - {accept: "Control+Shift+dollar", toggle: zh_trad, when: always}
+    - {accept: "Control+Shift+F", toggle: zh_trad, when: always}
+    - {accept: "Control+Shift+P", toggle: personal, when: always}
+    - {accept: "Control+Shift+E", toggle: show_es, when: always}
+    - {accept: "Control+Shift+H", toggle: wubi_spelling, when: always}
+
+menu:
+  #↓以下1條為候选项数量.
+  page_size: 6

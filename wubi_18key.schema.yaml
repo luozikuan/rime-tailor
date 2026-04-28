@@ -1,0 +1,32 @@
+# encoding: utf-8
+
+__include: wubi.schema:/
+
+schema:
+  schema_id: wubi_18key
+  name: "新世纪五笔18"
+  version: "1.0"
+  author:
+    - 发明人 王永民
+  description: |
+    敲z键进入拼音反查
+    敲~键以形查音
+    敲`键造词
+  dependencies:
+    # - pinyin
+
+speller:
+  algebra:
+    - derive/e/w/
+    - derive/t/r/
+    - derive/o/i/
+
+    - derive/d/s/
+    - derive/g/f/
+    - derive/k/j/
+
+    - derive/c/x/
+    - derive/n/b/
+
+translator:
+  prism: wubi_18key
