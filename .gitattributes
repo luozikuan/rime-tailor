@@ -1,0 +1,7 @@
+wubi.quanma.dict.yaml filter=lfs diff=lfs merge=lfs -text
+wubi.correction.dict.yaml filter=lfs diff=lfs merge=lfs -text
+wubi.extended.dict.yaml filter=lfs diff=lfs merge=lfs -text
+wubi.jianma.dict.yaml filter=lfs diff=lfs merge=lfs -text
+easy_en.dict.yaml filter=lfs diff=lfs merge=lfs -text
+easy_en.user.dict.yaml filter=lfs diff=lfs merge=lfs -text
+pinyin.dict.yaml filter=lfs diff=lfs merge=lfs -text

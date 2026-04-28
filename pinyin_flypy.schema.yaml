@@ -1,0 +1,111 @@
+# Rime schema
+# encoding: utf-8
+
+__include: pinyin.schema:/
+
+schema:
+  schema_id: pinyin_flypy
+  name: 小鹤双拼
+  version: "1.0"
+  author:
+    - 发明人 自在飞扬
+  description: |
+    小鹤双拼
+  dependencies:
+    # - wubi
+
+speller:
+  algebra:
+    __include: common.yaml:/algebra/wanxiang_tone_to_1234
+    __append:
+      - xform/^r5$/er5/
+      # 省略聲調
+      - derive/^([a-z]+)[0-5]$/$1/
+      - derive/([dtngkhrzcs])o(u|ng)$/$1o/
+      - derive/ong$/on/
+      - 'erase/^.*5$/'
+      # 小鹤双拼符號
+      - derive/^ng(\d)$/eng$1/
+      - xform/^n(\d)/en$1/
+      - xform/^m(\d)(;.*)/me$1$2/
+      - derive/^([jqxy])u(\d)$/$1v$2/
+      - derive/^([aoe])([ioun])(\d)$/$1$1$2$3/
+      - xform/^([aoe])(ng)?(\d)$/$1$1$2$3/
+      - xform/iu(\d)$/Ⓠ$1/
+      - xform/(.)ei(\d)$/$1Ⓦ$2/
+      - xform/uan(\d)$/Ⓡ$1/
+      - xform/[uv]e(\d)$/Ⓣ$1/
+      - xform/un(\d)$/Ⓨ$1/
+      - xform/^sh/Ⓤ/
+      - xform/^ch/Ⓘ/
+      - xform/^zh/Ⓥ/
+      - xform/uo(\d)$/Ⓞ$1/
+      - xform/ie(\d)$/Ⓟ$1/
+      - xform/(.)i?ong(\d)$/$1Ⓢ$2/
+      - xform/ing(\d)$/Ⓚ$1/
+      - xform/uai(\d)$/Ⓚ$1/
+      - xform/(.)ai(\d)$/$1Ⓓ$2/
+      - xform/(.)eng(\d)$/$1Ⓖ$2/
+      - xform/(.)en(\d)$/$1Ⓕ$2/
+      - xform/[iu]ang(\d)$/Ⓛ$1/
+      - xform/(.)ang(\d)$/$1Ⓗ$2/
+      - xform/ian(\d)$/Ⓜ$1/
+      - xform/(.)an(\d)$/$1Ⓙ$2/
+      - xform/(.)ou(\d)$/$1Ⓩ$2/
+      - xform/[iu]a(\d)$/Ⓧ$1/
+      - xform/iao(\d)$/Ⓝ$1/
+      - xform/(.)ao(\d)$/$1Ⓒ$2/
+      - xform/ui(\d)$/Ⓥ$1/
+      - xform/in(\d)$/Ⓑ$1/
+      - xlit/ⓆⓌⓇⓉⓎⓊⒾⓄⓅⓈⒹⒻⒼⒽⒿⓀⓁⓏⓍⒸⓋⒷⓃⓂ/qwrtyuiopsdfghjklzxcvbnm/
+      - xform/^(aj|ac|ad|ew|ef|oz)(\d?)$//
+      - derive/^(..)(\d)$/$1/
+      - derive/^(.).+(\d)$/$1$2/
+      # 符號標調
+      - 'xlit 1234 7890'
+
+preedit_format_小鹤双拼:
+  __append:
+    - xform/(^|[ '])aa/$1a/
+    - xform/(^|[ '])ee/$1e/
+    - xform/(^|[ '])oo/$1o/
+    - xform/([bpmfdtnljqx])n/$1iao/
+    - xform/(\w)g/$1eng/
+    - xform/(\w)q/$1iu/
+    - xform/(\w)w/$1ei/
+    - xform/([dtnlgkhjqxyvuirzcs])r/$1uan/
+    - xform/(\w)t/$1ve/
+    - xform/(\w)y/$1un/
+    - xform/([dtnlgkhvuirzcs])o/$1uo/
+    - xform/(\w)p/$1ie/
+    - xform/([jqx])s/$1iong/
+    - xform/(\w)s/$1ong/
+    - xform/(\w)d/$1ai/
+    - xform/(\w)f/$1en/
+    - xform/(\w)h/$1ang/
+    - xform/(\w)j/$1an/
+    - xform/([gkhvuirzcs])k/$1uai/
+    - xform/(\w)k/$1ing/
+    - xform/([jqxnlb])l/$1iang/
+    - xform/(\w)l/$1uang/
+    - xform/(\w)z/$1ou/
+    - xform/([gkhvuirzcs])x/$1ua/
+    - xform/(\w)x/$1ia/
+    - xform/(\w)c/$1ao/
+    - xform/([dtgkhvuirzcs])v/$1ui/
+    - xform/(\w)b/$1in/
+    - xform/(\w)m/$1ian/
+    - xform/([aoe])\1(\w)/$1$2/
+    - "xform/(^|[ '])v/$1zh/"
+    - "xform/(^|[ '])i/$1ch/"
+    - "xform/(^|[ '])u/$1sh/"
+    - xform/([jqxy])v/$1u/
+    - xform/([nl])v/$1ü/
+
+translator:
+  prism: pinyin_flypy
+  preedit_format:               # preedit_format 影响到输入框的显示和“Shift+回车”上屏的字符
+    __patch:
+      - preedit_format_小鹤双拼
+      - common.yaml:/translator/preedit_7890_as_tone
+      - common.yaml:/translator/preedit_show_tone

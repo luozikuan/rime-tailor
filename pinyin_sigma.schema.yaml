@@ -1,0 +1,164 @@
+# Rime schema
+# encoding: utf-8
+
+__include: pinyin.schema:/
+
+schema:
+  schema_id: pinyin_sigma
+  name: 西戈拼音
+  version: '1.0'
+  author:
+    - 发明人 西戈
+  description:
+    -
+  dependencies:
+    -
+
+speller:
+  algebra:
+    __include: common.yaml:/algebra/wanxiang_tone_to_1234
+    __append:
+      - xform/^r5$/er5/
+      # 省略聲調
+      - derive/^([a-z]+)[0-5]$/$1/
+      - 'erase/^.*5$/'
+
+      # 西戈码转写规则
+
+      # 特殊处理
+      - xform/er/EO/  # er 使用 eo 打出
+      - derive/(^|\W)ou/$1ov/  # ou 与 bu 同键，用 oü 来输入 ou
+      - derive/fo(\d|$)/fe$1/ # fo 与 ao 同键，用 fe 来输入 fo
+      - derive/ri/ro/ # ri 与 huai 同键，用 ro 来输入 ri
+
+      # z c s 最后加 h 可换成 zh ch sh
+      # zh ch sh 最后加 h 可换成 z c s
+      - derive/^([zcs])h([a-z]+)/$1$2H/
+      - derive/^([zcs])([a-z]+)/$1h$2H/
+
+      # 韵母映射
+      - xform/(\w)ng/$1T/
+      - xform/io/N/
+      - xform/([jqx])ua/$1O/
+      - derive/(y)ua/$1O/ # y 开头的 ua 可以使用 üa 来输入
+      - xform/ua/X/
+      - xform/ia/S/
+      - xform/n/N/
+      - xform/v/N/
+      - xform/e/E/
+      - xform/o/O/
+      - xform/i/Y/
+      - xform/([jqx])u/$1N/ # j q x 后的 u 需要使用 ü 来输入
+      - derive/(y)u/$1N/ # yu 可以使用 ü 来输入
+      - xform/u/W/
+      - xform/a/A/
+
+      # 声母映射
+      - xform/^[qk]/Q/
+      - xform/^p/QQ/
+      - xform/^t/T/
+      - xform/^l/L/
+      - xform/^n/N/
+      - xform/^ch/C/
+      - xform/^c/CC/
+      - xform/^[jg]/J/
+      - xform/^m/JJ/
+      - xform/^d/E/
+      - xform/^b/O/
+      - xform/^y/Y/
+      - xform/^zh/Z/
+      - xform/^z/ZZ/
+      - xform/^[xh]/X/
+      - xform/^r/XX/
+      - xform/^w/W/
+      - xform/^f/A/
+      - xform/^sh/S/
+      - xform/^s/SS/
+
+      - xlit/ABCDEFGHIJKLMNOPQRSTUVWXYZ/abcdefghijklmnopqrstuvwxyz/
+      # 符號標調
+      - 'xlit 1234 7890'
+
+
+preedit_format_西戈拼音:
+  __append:
+    # 西戈码预编辑区转写规则
+
+    # z c s 最后加 h 可换成 zh ch sh
+    # zh ch sh 最后加 h 可换成 z c s
+    - xform/(^|[ '])([zcs])\2(\w+)h/$1$2$3/
+    - xform/(^|[ '])([zcs])(\w+)h/$1$2$2$3/
+
+    # 特殊拼音处理
+    - xform/(^|[ '])eo(?![a-z])/$1ER/  # er 使用 eo 打出
+    - xform/(^|[ '])on(?![a-z])/$1OU/  # ou 与 bu 同键，用 oü 来输入 ou
+    - xform/(^|[ '])ae(?![a-z])/$1FO/ # fo 与 ao 同键，用 fe 来输入 fo
+    - xform/(^|[ '])xxo(?![a-z])/$1RI/ # ri 与 huai 同键，用 ro 来输入 ri
+
+    # 同输入码对应多种结果的，让位处理
+    - xform/(^|[ '])ey/$1DI/ # ei 词少，让位给 di
+    - xform/(^|[ '])xxy/$1HUAI/ # ri 已经有特殊处理，让位给 huai
+    - xform/(^|[ '])ow/$1BU/ # ou 已经有特殊处理，让位给 bu
+    - xform/(^|[ '])ao(?![a-z])/$1AO/ # fo 已经有特殊处理，让位给 ao
+
+    # 零声母处理
+    - xform/(^|[ '])([aoe])(?![a-z])/$1\U$2/
+    - xform/(^|[ '])([ae])y/$1\U$2I/
+    - xform/(^|[ '])([ae])t/$1\U$2NG/
+    - xform/(^|[ '])([ae])n/$1\U$2N/
+    # - xform/(^|[ '])ao(?![a-z])/$1AO/  # 让位处理中已经写过了
+
+    # 双击声母及韵母共用键中的简单逻辑先处理，可以让韵母的处理更简单
+    - xform/(^|[ '])ss/$1S/
+    - xform/(^|[ '])s/$1SH/
+
+    - xform/(^|[ '])xx([eowa])/$1R$2/ # re, ren, rong, ru, ruo, ran, rang
+
+    # 韵母
+    - xform/(\w+)t/$1NG/
+    - xform/(\w+)e/$1E/
+    - xform/(\w+)y/$1I/
+    - xform/(\w+)w/$1U/
+    - xform/(\w+)a/$1A/
+    - xform/(\w+)n(NG)/$1IO$2/
+    - xform/(\w+)on/$1VAN/
+    - xform/(\w+)o/$1O/
+    - xform/(\w+)x/$1UA/
+    - xform/(\w+)s/$1IA/
+    - xform/(\w+)nn/$1VN/
+    - xform/(\w+)(UA|U|E|O|I|IA|A)n/$1$2N/
+    - xform/(\w+)n/$1V/
+
+    # 声母
+    - xform/(^|[ '])qq/$1P/
+    - xform/(^|[ '])q([VI])/$1Q$2/
+    - xform/(^|[ '])q/$1K/
+    - xform/(^|[ '])t/$1T/
+    - xform/(^|[ '])l/$1L/
+    - xform/(^|[ '])n/$1N/
+    - xform/(^|[ '])cc/$1C/
+    - xform/(^|[ '])c/$1CH/
+    - xform/(^|[ '])jj/$1M/
+    - xform/(^|[ '])j([VI])/$1J$2/
+    - xform/(^|[ '])j/$1G/
+    - xform/(^|[ '])e/$1D/
+    - xform/(^|[ '])o/$1B/
+    - xform/(^|[ '])y/$1Y/
+    - xform/(^|[ '])zz/$1Z/
+    - xform/(^|[ '])z/$1ZH/
+    - xform/(^|[ '])xx([EUA])/$1R$2/
+    - xform/(^|[ '])x([VI])/$1X$2/
+    - xform/(^|[ '])x/$1H/
+    - xform/(^|[ '])w/$1W/
+    - xform/(^|[ '])a/$1F/
+
+    - xlit/ABCDEFGHIJKLMNOPQRSTUVWXYZ/abcdefghijklmnopqrstuüwxyz/  # 最後把编碼全部變小寫
+    - xform/([jqxy])ü/$1u/ # j q x y 后的 ü 需要显示成 u
+
+translator:
+  prism: pinyin_sigma
+  preedit_format:
+    __patch:
+      - preedit_format_西戈拼音
+      - common.yaml:/translator/preedit_7890_as_tone
+      - common.yaml:/translator/preedit_show_tone

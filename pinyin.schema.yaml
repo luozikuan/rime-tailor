@@ -1,0 +1,127 @@
+# Rime settings
+# encoding: utf-8
+
+schema:
+  schema_id: pinyin
+  name: 拼音
+  version: "2026-01-29"
+  author:
+    - 佚名
+  description: |
+    「漢語拼音」
+    用 7890 輸入四聲
+    用 - = 鍵翻頁
+    拼音碼表根據 CC-CEDICT 改編
+  dependencies:
+    # - wubi
+
+__include: common.yaml:/switches
+__include: common.yaml:/opencc_config
+__include: common.yaml:/punctuator
+__include: common.yaml:/easy_en
+__include: common.yaml:/octagram/enable_wanxiang_grammar
+
+engine:
+  processors:
+    - ascii_composer
+    - recognizer
+    - key_binder
+    - lua_processor@*tone_fallback   # 放在 speller 之前
+    - speller
+    - punctuator
+    - selector
+    - navigator
+    - express_editor
+  segmentors:
+    - ascii_segmentor
+    - matcher
+    - abc_segmentor
+    - punct_segmentor
+    - fallback_segmentor
+  translators:
+    - punct_translator
+    - script_translator
+    - "lua_translator@*calculator_translator"
+    - "table_translator@easy_en"
+  filters:
+    - "lua_filter@*date_ts"
+    - "lua_filter@*autocap_filter"
+    - "simplifier@es_conversion"
+    - "simplifier@personal"
+    - uniquifier
+
+# 可选配置（不配置则默认排除反查键 `）
+tone_fallback:
+  tone_chars: '7890'
+  exclude_patterns: # 排除模式(匹配到则不触发回退)
+    - "`"                # 排除反查键 `
+
+menu:
+  # 候选项数量，由于 7890 用于输入声调，无法用于选择候选项，因此这里设置为 6
+  page_size: 6
+
+# 拼写设定
+speller:
+  alphabet: zyxwvutsrqponmlkjihgfedcba7890
+  initials: zyxwvutsrqponmlkjihgfedcba
+  finals: '7890'
+  delimiter: " '"
+  algebra:
+    __include: common.yaml:/algebra/wanxiang_tone_to_1234
+    __append:
+      - xform/^r5$/er5/
+      # 省略韻母和聲調
+      - abbrev/^([a-z]).+$/$1/
+      - abbrev/^([zcs]h).+$/$1/
+      # 省略韻母
+      - abbrev/^([a-z])(.+)([0-5])$/$1$3/
+      - abbrev/^([zcs]h)(.+)([0-5])$/$1$3/
+      - derive/^([nl])ve/$1ue/
+      - derive/^([jqxy])u/$1v/
+      - derive/([dtnlgkhrzcs])un/$1uen/
+      - derive/ui/uei/
+      - derive/iu/iou/
+      - derive/ao/oa/
+      - derive/([aeiou])ng/$1gn/
+      - derive/([iu])a(o|ng?)/a$1$2/
+      # 省略聲調
+      - derive/^([a-z]+)[0-5]$/$1/
+      - derive/([dtngkhrzcs])o(u|ng)$/$1o/
+      - derive/ong$/on/
+      - 'erase/^.*5$/'
+      # 符號標調
+      - 'xlit 1234 7890'
+
+preedit_format_全拼:
+  __append:
+    - xform/([nl])v/$1ü/
+    - xform/([nl])ue/$1üe/
+    - xform/([nl])üen/$1uen/
+    - xform/([jqxy])v/$1u/
+    - xform/eh/ê/
+
+translator:
+  dictionary: pinyin
+  # dictionary: wanxiang  # MARK：切换到万象拼音词库
+
+  spelling_hints: 5  # ～字以內候選標註完整帶調拼音
+  preedit_format:
+    __patch:
+      - preedit_format_全拼
+      - common.yaml:/translator/preedit_7890_as_tone
+      - common.yaml:/translator/preedit_show_tone
+  comment_format:
+    __include: common.yaml:/translator/pinyin_comment
+
+key_binder:
+  import_preset: default
+  bindings:
+    # 使用 tab 在不同音节之间跳转
+    - { when: has_menu, accept: "Tab", send: "Control+Right" }
+    - { when: composing, accept: "Tab", send: "Control+Right" }
+
+recognizer:
+  import_preset: default
+  patterns:
+    punct: '^/([0-9]0?|[A-Za-z]+)$'
+    expression: '^=.*$'
