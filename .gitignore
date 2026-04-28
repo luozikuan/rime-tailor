@@ -1,0 +1,12 @@
+build/
+*.bin
+*.log
+*.userdb
+*.txt
+*.tsv
+
+weasel.*
+
+installation.yaml
+user.yaml
+*.gram
