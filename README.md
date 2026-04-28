@@ -15,9 +15,10 @@
 9. 挂载了英文词库，直接输入英文单词即可，英文权重低于中文
 
 ## 拼音
-和地球拼音一样使用 CC-CEDICT 词库整理成简体字的版本，此词库带声调，可使用声调来降低重码率。
+和地球拼音一样使用 CC-CEDICT 词库整理成简体字的带声调版本，可使用声调来降低重码率，使用了万象方案中的词频。
 - 地球拼音链接：https://github.com/rime/rime-terra-pinyin
 - CC-CEDICT 词库链接：https://www.mdbg.net/chinese/dictionary?page=cedict
+- 万象方案链接：https://github.com/amzxyz/rime_wanxiang
 - 兼容万象词库的拼音格式，开启方式为将词库的 dicts 文件夹放到方案目录下，然后在 pinyin.schema.yaml 中设置 `translator/dictionary: wanxiang`
 
 1. 声调使用 7890 输入，声调可连续输入，以最后输入的声调为准。
