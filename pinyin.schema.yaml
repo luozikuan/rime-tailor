@@ -26,6 +26,7 @@ engine:
     - ascii_composer
     - recognizer
     - key_binder
+    - lua_processor@*select_character # 以词定字
     - lua_processor@*tone_fallback   # 放在 speller 之前
     - speller
     - punctuator
