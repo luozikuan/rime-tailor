@@ -10,3 +10,5 @@ weasel.*
 installation.yaml
 user.yaml
 *.gram
+
+sync/*
