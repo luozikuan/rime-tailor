@@ -49,6 +49,10 @@ end
 
 -- 主过滤函数
 local function wubi_phrase_spelling(input, env)
+    local ctx = env.engine.context
+    local raw_input = ctx.input
+    local len = #raw_input
+
     for cand in input:iter() do
         local comment = cand.comment
 
@@ -64,12 +68,10 @@ local function wubi_phrase_spelling(input, env)
                 local merged_codes = merge_codes(codes, 1)
                 local new_comment = "〔" .. merged_radicals .. "〕"
 
-                -- 获取用户输入码
-                local input_code = env.engine.context.input or ""
                 -- 判断是否需要显示 merged_codes：
-                -- 1. merged_codes 不以 input_code 开头（触发了容错码）
+                -- 1. merged_codes 不以 raw_input 开头（触发了容错码）
                 -- 2. 输入码包含 z（启用了反查或通配）
-                if (#input_code > 1 and merged_codes:sub(1, #input_code) ~= input_code) or input_code:find("z") then
+                if (len > 1 and merged_codes:sub(1, len) ~= raw_input) or raw_input:find("z") then
                     new_comment = new_comment .. merged_codes
                 end
 
