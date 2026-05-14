@@ -32,6 +32,10 @@ engine:
     - selector
     - navigator
     - express_editor
+  filters:
+    - "simplifier@es_conversion"
+    - "simplifier@personal"
+    - uniquifier
 
 translator:
   prism: t9
