@@ -30,8 +30,7 @@ engine:
     - simplifier
     - "reverse_lookup_filter@ci_reverse_lookup"
     - "reverse_lookup_filter@zhuyin_lookup"
-    - "simplifier@wubi_spelling"
-    - "lua_filter@*wubi_phrase_spelling"
+    - "lua_filter@*wubi_spelling"
     - "lua_filter@*date_ts"
     - "lua_filter@*autocap_filter"
     - "simplifier@es_conversion"
@@ -156,16 +155,6 @@ zhuyin_fix:
   tips: "〔以形查音〕"
   tag: zhuyin_fix
 
-wubi_spelling:
-  opencc_config: wubi_spelling.json
-  option_name: wubi_spelling
-  show_in_comment: true
-  comment_format:
-    - "xform/☯/ · /"
-  tags:
-    - abc
-    - rvlk1
-  tips: all
 
 zhuyin_lookup:
   dictionary: pinyin
