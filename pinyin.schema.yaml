@@ -25,6 +25,7 @@ engine:
   processors:
     - ascii_composer
     - recognizer
+    - "lua_processor@*date_ts_processor" # 日期快捷上屏，须在 key_binder 之前（否则 minus 被翻页吃掉）
     - key_binder
     - lua_processor@*select_character # 以词定字
     - lua_processor@*tone_fallback   # 放在 speller 之前
