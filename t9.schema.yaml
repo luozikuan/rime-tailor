@@ -27,7 +27,6 @@ engine:
     - ascii_composer
     - recognizer
     - key_binder
-    - lua_processor@*tone_fallback   # 放在 speller 之前
     - speller
     - punctuator
     - selector
@@ -38,7 +37,10 @@ translator:
   prism: t9
   spelling_hints: 100
   always_show_comments: true   # Rime 默认在 preedit 等于 comment 时取消显示 comment，这里强制一直显示，供 t9.
-  # comment_format: []
+  preedit_format:
+    __patch:
+      - pinyin.schema:/preedit_format_全拼
+      - common.yaml:/translator/preedit_show_tone
 
 # 自定义短语：custom_phrase_t9.txt
 # ⚠️ 编码要用数字
@@ -61,19 +63,12 @@ punctuator:
 key_binder:
   bindings/+:
     - { when: has_menu, accept: 1, send: apostrophe }
-    - { when: has_menu, accept: minus, send: minus }  # tone 1
+    - { when: has_menu, accept: minus, send: minus }
     - { when: paging, accept: minus, send: Page_Up }
 
-tone_fallback:
-  tone_chars: '-/<\'
-  exclude_patterns:
-    - "`"
-
-
 speller:
-  alphabet: 'zyxwvutsrqponmlkjihgfedcbaZYXWVUTSRQPONMLKJIHGFEDCBA987654321-/<\'
+  alphabet: zyxwvutsrqponmlkjihgfedcbaZYXWVUTSRQPONMLKJIHGFEDCBA987654321
   initials: zyxwvutsrqponmlkjihgfedcbaZYXWVUTSRQPONMLKJIHGFEDCBA987654321
-  finals: '-/<\'
   algebra:
     __include: common.yaml:/algebra/wanxiang_tone_to_1234
     __append:
@@ -86,36 +81,15 @@ speller:
       - abbrev/^([zcs]h)(.+)([0-5])$/$1$3/
       - derive/^([nl])ve/$1ue/
       - derive/^([jqxy])u/$1v/
-      - derive/([dtnlgkhrzcs])un/$1uen/
-      - derive/ui/uei/
-      - derive/iu/iou/
-      - derive/ao/oa/
-      - derive/([aeiou])ng/$1gn/
-      - derive/([iu])a(o|ng?)/a$1$2/
-      # 省略聲調
-      - derive/^([a-z]+)[0-5]$/$1/
-      - derive/([dtngkhrzcs])o(u|ng)$/$1o/
-      - derive/ong$/on/
+      # 禁用聲調
+      - xform/^([a-z]+)[0-5]$/$1/
       - 'erase/^.*5$/'
-      # 符號標調
-      - 'xlit 1234 -/<\'
-      # 9键
-      - derive/^(.*)$/\U$1/
-      - xform/[ABC]/2/
-      - xform/[DEF]/3/
-      - xform/[GHI]/4/
-      - xform/[JKL]/5/
-      - xform/[MNO]/6/
-      - xform/[PQRS]/7/
-      - xform/[TUV]/8/
-      - xform/[WXYZ]/9/
-
-
-translator:
-  prism: t9
-  spelling_hints: 5  # ～字以內候選標註完整帶調拼音
-  preedit_format:
-    __patch:
-      - pinyin.schema:/preedit_format_全拼
-      - common.yaml:/translator/preedit_minus_slash_less_backslash_as_tone
-      - common.yaml:/translator/preedit_show_tone
+      # ### 九宫格数字映射
+      - derive/[abc]/2/
+      - derive/[def]/3/
+      - derive/[hgi]/4/
+      - derive/[jkl]/5/
+      - derive/[omn]/6/
+      - derive/[pqrs]/7/
+      - derive/[tuv]/8/
+      - derive/[wxyz]/9/

@@ -18,10 +18,10 @@
 - 地球拼音链接：https://github.com/rime/rime-terra-pinyin
 - CC-CEDICT 词库链接：https://www.mdbg.net/chinese/dictionary?page=cedict
 - 万象方案链接：https://github.com/amzxyz/rime_wanxiang
-- 兼容万象词库的拼音格式，开启方式为将词库的 dicts 文件夹放到方案目录下，然后在 pinyin.schema.yaml 中设置 `translator/dictionary: wanxiang`
 
+1. 兼容万象词库的拼音格式，开启方式为将词库的 dicts 文件夹放到方案目录下，然后在 pinyin.schema.yaml 中设置 `translator/dictionary: wanxiang`
 1. 声调使用 7890 输入，声调可连续输入，以最后输入的声调为准。
-2. 使用 ' 键分词
+1. 使用 ' 键分词
 
 #### 小鹤双拼
 在拼音方案的基础上使用小鹤双拼的拼写运算
@@ -30,7 +30,7 @@
 #### t9
 在拼音方案的基础上使用 t9 的拼写运算
 
-1. 使用 -/<\ 键输入声调（不过声调在9键上体验还不太好，需要在左侧选完拼音后再输入声调）
+1. 由于声调体验不好，故不支持声调
 
 #### 西戈码
 在拼音方案的基础上使用西戈码的拼写运算
