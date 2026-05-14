@@ -86,12 +86,12 @@ translator:
       - 'xform 8 ˊ'
       - 'xform 9 ˇ'
       - 'xform 0 ˋ'
-  preedit_minus_slash_less_backslash_as_tone:
-    __append:
-      - 'xform - ˉ'
-      - 'xform / ˊ'
-      - 'xform < ˇ'
-      - 'xform \ ˋ'
+  # preedit_minus_slash_less_backslash_as_tone:
+  #   __append:
+  #     - 'xform - ˉ'
+  #     - 'xform / ˊ'
+  #     - 'xform < ˇ'
+  #     - 'xform \ ˋ'
   preedit_show_tone:
     __append:
       - 'xform ([aeiou])(ng?|r)(ˉ|ˊ|ˇ|ˋ) $1$3$2'
