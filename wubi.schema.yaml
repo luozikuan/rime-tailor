@@ -23,7 +23,7 @@ switches:
   __append:
     - name: wubi_spelling
       # reset: 0
-      states: [ 隐藏, 拆分 ]
+      states: [ 拆隐, 拆显 ]
 
 engine:
   filters:

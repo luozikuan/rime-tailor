@@ -26,6 +26,21 @@ local function normalize_namespace(ns)
 end
 
 -- 由字符集合构建键码查找表（仅支持单字节按键字符）
+-- 读取配置列表：返回字符串数组
+local function config_get_list(config, path)
+    local result = {}
+    local list = config:get_list(path)
+    if list then
+        for i = 0, list.size - 1 do
+            local val = config:get_string(path .. "/@" .. i)
+            if val then
+                table.insert(result, val)
+            end
+        end
+    end
+    return result
+end
+
 local function build_tone_keycode_set(chars)
     local keycodes = {}
     local charset = {}
@@ -44,20 +59,15 @@ local function load_tone_chars(config, path)
         return direct
     end
 
-    local list = config:get_list(path)
-    if not list then
-        return DEFAULT_TONE_CHARS
-    end
-
-    local chars = {}
-    for i = 0, list.size - 1 do
-        local val = config:get_string(path .. "/@" .. i)
-        if val and val ~= "" then
-            table.insert(chars, val)
+    local chars = config_get_list(config, path)
+    local filtered = {}
+    for _, val in ipairs(chars) do
+        if val ~= "" then
+            table.insert(filtered, val)
         end
     end
 
-    local merged = table.concat(chars, "")
+    local merged = table.concat(filtered, "")
     if merged == "" then
         return DEFAULT_TONE_CHARS
     end
@@ -73,16 +83,8 @@ function M.init(env)
     env.tone_keycodes, env.tone_charset = build_tone_keycode_set(env.tone_chars)
 
     -- 排除模式列表
-    env.exclude_strings = {}
-    local exc_path = ns .. "/exclude_patterns"
-    local exc_list = config:get_list(exc_path)
-    if exc_list then
-        for i = 0, exc_list.size - 1 do
-            local val = config:get_string(exc_path .. "/@" .. i)
-            if val then table.insert(env.exclude_strings, val) end
-        end
-    else
-        -- 默认排除反查键
+    env.exclude_strings = config_get_list(config, ns .. "/exclude_patterns")
+    if #env.exclude_strings == 0 then
         table.insert(env.exclude_strings, "`")
     end
 

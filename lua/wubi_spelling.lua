@@ -1,5 +1,5 @@
 -- wubi_spelling.lua
--- 纯 Lua 实现五笔字根拆分显示，替代 opencc simplifier + wubi_phrase_spelling
+-- -- 纯 Lua 实现字根拆分显示，替代 opencc，因为 opencc 修改了 comment 之后会导致自造词失效
 -- 直接加载 wubi_spelling.txt，按候选词逐字查表生成 comment
 
 local spelling_table = nil
