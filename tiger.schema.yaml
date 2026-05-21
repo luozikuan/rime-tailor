@@ -1,0 +1,171 @@
+schema:
+  schema_id: tiger
+  name: "虎码单字"
+  version: 0.9
+  author:
+    - {}
+  description: |
+    虎码官方单字
+    敲 ` 鍵進入拼音反查
+    用 * 鍵匹配非首位的任意字根
+  dependencies:
+    - pinyin  # 拼音方案
+    - easy_en
+
+__include: common.yaml:/opencc_config
+__include: common.yaml:/punctuator
+__include: common.yaml:/easy_en
+
+switches:
+  __include: common.yaml:/switches/switches
+  __append:
+    - name: radical_spelling
+      reset: 1
+      states: [ 拆隐, 拆显 ]
+
+engine:
+  processors:
+    - ascii_composer
+    - recognizer
+    - "lua_processor@*date_ts_processor" # 日期快捷上屏，须在 key_binder 之前
+    - key_binder
+    - speller
+    - punctuator
+    - selector
+    - navigator
+    - express_editor #计算
+  segmentors:  # 分段
+    - ascii_segmentor
+    - matcher
+    - "affix_segmentor@rvlk1"
+    - "affix_segmentor@zhuyin_fix"
+    - "affix_segmentor@easy_en" # 英文相关
+    - abc_segmentor
+    - punct_segmentor
+    - fallback_segmentor
+  translators:
+    - punct_translator
+    - reverse_lookup_translator #拼音反查
+    - "table_translator@rvlk1"
+    - table_translator
+    - "table_translator@zhuyin_fix"
+    - "lua_translator@*calculator_translator"
+    - "table_translator@easy_en"
+  filters:
+    # - lua_filter@dz_ci  #过滤词组lua，单字模式
+    - simplifier
+    - "reverse_lookup_filter@ci_reverse_lookup"
+    - "reverse_lookup_filter@zhuyin_lookup"
+    - "lua_filter@*radical_spelling"  #拆分滤镜
+    - "lua_filter@*date_ts"
+    - "lua_filter@*autocap_filter"
+    - "simplifier@es_conversion"
+    - "simplifier@personal"
+    - uniquifier #过滤重复
+
+speller:
+  auto_clear: max_length # 3种选择， manual|auto|max_length 空码按下一键确认清屏|空码自动清|达到最长码时后码顶上清屏
+  auto_select: false
+  max_code_length: 10000
+  # 挂接的英文词库有时需要输入大写字母
+  alphabet: zyxwvutsrqponmlkjihgfedcbaZYXWVUTSRQPONMLKJIHGFEDCBA*
+  initials: zyxwvutsrqponmlkjihgfedcbaZYXWVUTSRQPONMLKJIHGFEDCBA*
+  auto_select_pattern: ^[\w]{4}$
+  algebra:  # 万能*键拼写处理，*符号匹配任意字符
+    - derive/^(...).$/$1*/
+    - derive/^(..).(.*)$/$1*$2/
+    - derive/^(.).(.*)$/$1*$2/
+    - derive/^.(.*)$/*$1/  # 第一位通配，建议这种情况直接拼音反查算了
+
+translator:
+  dictionary: tiger.extended
+  db_class: tabledb
+  enable_charset_filter: false
+  enable_encoder: false
+  enable_sentence: false
+  encode_commit_history: false
+  max_phrase_length: 4
+  enable_user_dict: false
+  enable_completion: false	# 编码提示 true 开启  false 关闭
+  comment_format:  #提示码自定义
+    - "xform/~/ /" #去掉编码提示前的~号
+    # - "xform/^/ /" #提示前面 +间距
+
+# 拼音反查
+reverse_lookup:
+  __include: /translator
+  dictionary: pinyin
+  tips: "〔拼音反查〕"
+  preedit_format:
+    - xform/([nl])v/$1ü/
+    - xform/([nl])ue/$1üe/
+    - xform/([jqxy])v/$1u/
+  tag: rvlk2
+
+
+rvlk1:
+  __include: /reverse_lookup
+  prefix: "`"
+  tag: rvlk1
+  extra_tags:
+    - rvlk2
+
+ci_reverse_lookup:
+  dictionary: tiger.extended
+  tips: "〔虎码滤镜〕"
+  tags:
+    - rvlk2
+
+zhuyin_fix:
+  __include: /translator
+  prefix: '~'
+  tips: "〔以形查音〕"
+  tag: zhuyin_fix
+
+
+zhuyin_lookup:
+  dictionary: pinyin
+  tags:
+    - zhuyin_fix
+  overwrite_comment: true
+  comment_format:
+    __include: common.yaml:/translator/pinyin_comment
+
+
+
+key_binder:
+  #  import_preset: default
+  bindings:
+    #- { when: composing, accept: Return, send: Escape } # 回车清屏编码
+    #- { accept: space, send: space, when: has_menu } # 有候选时空格上屏首选
+    #- { accept: space, send: Escape, when: composing } # 无候选(空码）时空格清屏编码
+    - { accept: semicolon, send: 2, when: has_menu } # 分号次选
+    - { when: has_menu, accept: apostrophe, send: 3 } # 引号三选
+    - { when: has_menu, accept: minus, send: Page_Up } # - 向后翻页
+    - { when: has_menu, accept: equal, send: Page_Down } # = 向前翻页
+    # - { when: composing, accept: bracketleft, send: Page_Up } # [ 后翻
+    # - { when: composing, accept: bracketright, send: Page_Down } # ] 前翻
+    - { accept: "Control+Shift+H", toggle: radical_spelling, when: composing } # 拆分滤镜开关
+    - { when: has_menu, accept: Right, send: Down } # 右方向键 向后移动焦点
+    - { when: has_menu, accept: Left, send: Up } # 左方向键 向前移动焦点
+    #- { when: always, accept: "Shift+space" , toggle: full_shape } # 全半角切换
+
+recognizer:
+  import_preset: default
+  patterns:
+    email: "^[A-Za-z][-_.0-9A-Za-z]*@.*$"
+    punct: "^/([0-9]0?|[A-Za-z]+)$"
+    rvlk1: "^`[a-z]*'?$"
+    rvlk2: "^`[a-z]*'?$"
+    zhuyin_fix: "~[a-z]*?$"
+    # easy_en: "^'[A-Za-z]*`?$"
+    expression: "^=.*$"
+
+
+radical_spelling:
+  dictionary: "lua/data/tiger_spelling.txt"  # 字根/编码数据文件，格式: 字\t〔PUA字根〕编码
+  show_code_rule: 0  # 是否显示编码，0-仅显示容错码（与input不同时才显示），1-始终显示
+  show_code_extra_patterns:  # 匹配到则显示编码
+    # - "*"   # 通配符号
+  exclude_patterns:  # 匹配到则不显示字根/编码（优先级高于 show_code_extra_patterns）
+    - "^~"  # ~ 开头的场景不需要显示字根/编码（以形查音）

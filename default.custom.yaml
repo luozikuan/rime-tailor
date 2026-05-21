@@ -3,6 +3,7 @@ patch:
   # 方案列表
   schema_list:
     - {schema: wubi}
+    - {schema: tiger}
     - {schema: pinyin_flypy}
     - {schema: pinyin}
     - {schema: t9}
@@ -19,6 +20,7 @@ patch:
       - personal
       - show_es
       - wubi_spelling
+      - radical_spelling
     fold_options: true            # 呼出时是否折叠，多方案时建议折叠 true ，一个方案建议展开 false
     abbreviate_options: true      # 折叠时是否缩写选项
     option_list_separator: ' / '  # 折叠时的选项分隔符
