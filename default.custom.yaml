@@ -2,12 +2,12 @@ patch:
 
   # 方案列表
   schema_list:
-    - {schema: wubi}
     - {schema: tiger}
-    - {schema: pinyin_flypy}
     - {schema: pinyin}
-    - {schema: t9}
     - {schema: pinyin_sigma}
+    - {schema: wubi}
+    - {schema: pinyin_flypy}
+    - {schema: t9}
     - {schema: pinyin_17key}
 
   # 方案选单相关
