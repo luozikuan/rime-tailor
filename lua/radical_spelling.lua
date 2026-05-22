@@ -83,7 +83,7 @@ local function filter(input, env)
     local input_len = #raw_input
 
     for cand in input:iter() do
-		if show_radical and string.sub(raw_input, 1, 1) ~= "~" then
+		if string.sub(raw_input, 1, 1) ~= "~" then
 			local text = cand.text
 			local char_count = utf8.len(text)
 
@@ -107,13 +107,23 @@ local function filter(input, env)
 				if all_found and #codes_list == char_count then
 					-- 显示正确编码
 					local merged_codes = merge_items(codes_list, 1)
-					if string.sub(raw_input, 1, 1) ~= "`" then
-						cand.comment = merged_codes .. cand.comment
+					local radical_info = ""
+					if string.sub(raw_input, 1, 1) == "`" then
+						radical_info = cand.comment
+						cand.comment = ""
+					elseif show_radical or string.find(raw_input, "*") or merged_codes:sub(1, input_len) ~= raw_input then
+						radical_info = merged_codes
 					end
 
 					-- 显示字根
+					if show_radical then
                     local merged_radicals = merge_items(radicals_list, 3)
-                    cand.comment = "〔" .. merged_radicals .. "〕" .. cand.comment
+						radical_info = merged_radicals .. "・" .. radical_info
+					end
+
+					if radical_info ~= "" then
+						cand.comment = "〔" .. radical_info .. "〕" .. cand.comment
+					end
 				end
 			end
         end
