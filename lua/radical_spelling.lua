@@ -6,83 +6,83 @@ local spelling_table = nil
 
 -- 加载 radical_spelling.txt 到内存
 local function load_spelling(env)
-    if spelling_table then return end
-    spelling_table = {}
+	if spelling_table then return end
+	spelling_table = {}
 
-    -- 查找 opencc 目录下的数据文件
-    local path = rime_api.get_user_data_dir() .. "/lua/data/tiger_spelling.txt"
-    local f = io.open(path, "r")
-    if not f then
-        log.warning("radical_spelling: cannot open " .. path)
-        return
-    end
+	-- 查找 opencc 目录下的数据文件
+	local path = rime_api.get_user_data_dir() .. "/lua/data/tiger_spelling.txt"
+	local f = io.open(path, "r")
+	if not f then
+		log.warning("radical_spelling: cannot open " .. path)
+		return
+	end
 
-    for line in f:lines() do
-        -- 格式: 字\t〔PUA字根〕编码
-        local char, val = line:match("^([%z\1-\127\194-\244][\128-\191]*)\t(.+)$")
-        if char and val then
-            local radicals = val:match("〔(.-)〕")
-            local code = val:match("〕([a-z ]+)")
-            if radicals and code then
-                spelling_table[char] = { radicals = radicals, code = code }
-            end
-        end
-    end
-    f:close()
+	for line in f:lines() do
+		-- 格式: 字\t〔PUA字根〕编码
+		local char, val = line:match("^([%z\1-\127\194-\244][\128-\191]*)\t(.+)$")
+		if char and val then
+			local radicals = val:match("〔(.-)〕")
+			local code = val:match("〕([a-z ]+)")
+			if radicals and code then
+				spelling_table[char] = { radicals = radicals, code = code }
+			end
+		end
+	end
+	f:close()
 end
 
 -- UTF-8 逐字迭代
 local function utf8_chars(s)
-    local i = 1
-    return function()
-        if i > #s then return nil end
-        local b = s:byte(i)
-        local len = 1
-        if b >= 0xF0 then len = 4
-        elseif b >= 0xE0 then len = 3
-        elseif b >= 0xC0 then len = 2
-        end
-        local char = s:sub(i, i + len - 1)
-        i = i + len
-        return char
-    end
+	local i = 1
+	return function()
+		if i > #s then return nil end
+		local b = s:byte(i)
+		local len = 1
+		if b >= 0xF0 then len = 4
+		elseif b >= 0xE0 then len = 3
+		elseif b >= 0xC0 then len = 2
+		end
+		local char = s:sub(i, i + len - 1)
+		i = i + len
+		return char
+	end
 end
 
 -- 按五笔词组规则合并编码/字根
 -- char_bytes: 编码=1, PUA字根=3
 local function merge_items(items, char_bytes)
-    local n = #items
-    if n < 2 then return items[1] end
+	local n = #items
+	if n < 2 then return items[1] end
 
-    if n == 2 then
-        return items[1]:sub(1, 2 * char_bytes) ..
-               items[2]:sub(1, 2 * char_bytes)
-    elseif n == 3 then
-        return items[1]:sub(1, 1 * char_bytes) ..
-               items[2]:sub(1, 1 * char_bytes) ..
-               items[3]:sub(1, 2 * char_bytes)
-    else
-        return items[1]:sub(1, 1 * char_bytes) ..
-               items[2]:sub(1, 1 * char_bytes) ..
-               items[3]:sub(1, 1 * char_bytes) ..
-               items[n]:sub(1, 1 * char_bytes)
-    end
+	if n == 2 then
+		return items[1]:sub(1, 2 * char_bytes) ..
+			   items[2]:sub(1, 2 * char_bytes)
+	elseif n == 3 then
+		return items[1]:sub(1, 1 * char_bytes) ..
+			   items[2]:sub(1, 1 * char_bytes) ..
+			   items[3]:sub(1, 2 * char_bytes)
+	else
+		return items[1]:sub(1, 1 * char_bytes) ..
+			   items[2]:sub(1, 1 * char_bytes) ..
+			   items[3]:sub(1, 1 * char_bytes) ..
+			   items[n]:sub(1, 1 * char_bytes)
+	end
 end
 
 local function init(env)
-    load_spelling(env)
+	load_spelling(env)
 end
 
 -- 主过滤函数
 local function filter(input, env)
-    -- 检查 radical_spelling 开关是否开启
-    local ctx = env.engine.context
+	-- 检查 radical_spelling 开关是否开启
+	local ctx = env.engine.context
 	local show_radical = ctx:get_option("radical_spelling")
 
-    local raw_input = ctx.input
-    local input_len = #raw_input
+	local raw_input = ctx.input
+	local input_len = #raw_input
 
-    for cand in input:iter() do
+	for cand in input:iter() do
 		if string.sub(raw_input, 1, 1) ~= "~" then
 			local text = cand.text
 			local char_count = utf8.len(text)
@@ -117,7 +117,7 @@ local function filter(input, env)
 
 					-- 显示字根
 					if show_radical then
-                    local merged_radicals = merge_items(radicals_list, 3)
+						local merged_radicals = merge_items(radicals_list, 3)
 						radical_info = merged_radicals .. "・" .. radical_info
 					end
 
@@ -126,9 +126,9 @@ local function filter(input, env)
 					end
 				end
 			end
-        end
-        yield(cand)
-    end
+		end
+		yield(cand)
+	end
 end
 
 return { init = init, func = filter }
