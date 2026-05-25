@@ -11,6 +11,7 @@ schema:
   dependencies:
     - pinyin  # 拼音方案
     - easy_en
+    - tiger_spelling
 
 __include: common.yaml:/opencc_config
 __include: common.yaml:/punctuator
@@ -20,7 +21,7 @@ switches:
   __include: common.yaml:/switches/switches
   __append:
     - name: radical_spelling
-      # reset: 1
+      reset: 1
       states: [ 拆隐, 拆显 ]
 
 engine:
@@ -90,6 +91,9 @@ translator:
   comment_format:  #提示码自定义
     - "xform/~/ /" #去掉编码提示前的~号
     # - "xform/^/ /" #提示前面 +间距
+
+lua_reverse_db:
+  spelling: tiger_spelling
 
 # 拼音反查
 reverse_lookup:

@@ -13,6 +13,7 @@ schema:
   dependencies:
     - pinyin
     - easy_en
+    - wubi_spelling
 
 __include: common.yaml:/opencc_config
 __include: common.yaml:/punctuator
@@ -117,6 +118,9 @@ fixed:
   encode_commit_history: false
   initial_quality: 1000
   max_phrase_length: 4
+
+lua_reverse_db:
+  spelling: wubi_spelling
 
 mkst:
   __include: /translator
