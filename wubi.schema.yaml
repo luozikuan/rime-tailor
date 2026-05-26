@@ -126,7 +126,7 @@ mkst:
   __include: /translator
   initial_quality: 100
   enable_sentence: true
-  prefix: "'"
+  # prefix: "'"
   tips: "〔精准造词〕"
   tag: mkst
 
