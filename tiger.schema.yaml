@@ -1,11 +1,11 @@
 schema:
   schema_id: tiger
-  name: "虎码单字"
+  name: "虎码"
   version: 0.9
   author:
     - {}
   description: |
-    虎码官方单字
+    虎码（带词组）
     敲 ` 鍵進入拼音反查
     用 * 鍵匹配非首位的任意字根
   dependencies:
