@@ -41,9 +41,9 @@ engine:
   segmentors:  # 分段
     - ascii_segmentor
     - matcher
+    - "affix_segmentor@mkst"
     - "affix_segmentor@rvlk1"
     - "affix_segmentor@zhuyin_fix"
-    - "affix_segmentor@easy_en" # 英文相关
     - abc_segmentor
     - punct_segmentor
     - fallback_segmentor
@@ -52,11 +52,12 @@ engine:
     - reverse_lookup_translator #拼音反查
     - "table_translator@rvlk1"
     - table_translator
+    - "table_translator@fixed"
+    - "table_translator@mkst"
     - "table_translator@zhuyin_fix"
     - "lua_translator@*calculator_translator"
     - "table_translator@easy_en"
   filters:
-    # - lua_filter@dz_ci  #过滤词组lua，单字模式
     - simplifier
     - lua_filter@*single_char
     - "reverse_lookup_filter@ci_reverse_lookup"
@@ -72,6 +73,7 @@ speller:
   auto_clear: max_length # 3种选择， manual|auto|max_length 空码按下一键确认清屏|空码自动清|达到最长码时后码顶上清屏
   auto_select: false
   max_code_length: 10000
+  delimiter: "`"
   # 挂接的英文词库有时需要输入大写字母
   alphabet: zyxwvutsrqponmlkjihgfedcbaZYXWVUTSRQPONMLKJIHGFEDCBA*
   initials: zyxwvutsrqponmlkjihgfedcbaZYXWVUTSRQPONMLKJIHGFEDCBA*
@@ -96,8 +98,28 @@ translator:
     - "xform/~/ /" #去掉编码提示前的~号
     # - "xform/^/ /" #提示前面 +间距
 
+fixed:
+  dictionary: tiger.extended
+  db_class: tabledb
+  enable_charset_filter: false
+  enable_completion: false
+  enable_encoder: true  # 开启自动造词
+  enable_sentence: false
+  enable_user_dict: true  # 开启用户词典
+  encode_commit_history: false
+  initial_quality: 1000
+  max_phrase_length: 4
+
 lua_reverse_db:
   spelling: tiger_spelling
+
+mkst:
+  __include: /translator
+  initial_quality: 100
+  enable_sentence: true
+  # prefix: "`"
+  tips: "〔精准造词〕"
+  tag: mkst
 
 # 拼音反查
 reverse_lookup:
@@ -163,6 +185,7 @@ recognizer:
   import_preset: default
   patterns:
     email: "^[A-Za-z][-_.0-9A-Za-z]*@.*$"
+    mkst: "^[a-z]*`[a-z`]*$"
     punct: "^/([0-9]0?|[A-Za-z]+)$"
     rvlk1: "^`[a-z]*'?$"
     rvlk2: "^`[a-z]*'?$"
