@@ -23,6 +23,9 @@ switches:
     - name: radical_spelling
       reset: 1
       states: [ 拆隐, 拆显 ]
+    - name: single_char
+      # reset: 0
+      states: [ 词组, 单字 ]
 
 engine:
   processors:
@@ -55,6 +58,7 @@ engine:
   filters:
     # - lua_filter@dz_ci  #过滤词组lua，单字模式
     - simplifier
+    - lua_filter@*single_char
     - "reverse_lookup_filter@ci_reverse_lookup"
     - "reverse_lookup_filter@zhuyin_lookup"
     - "lua_filter@*radical_spelling"  #拆分滤镜
@@ -150,6 +154,7 @@ key_binder:
     # - { when: composing, accept: bracketleft, send: Page_Up } # [ 后翻
     # - { when: composing, accept: bracketright, send: Page_Down } # ] 前翻
     - { accept: "Control+Shift+H", toggle: radical_spelling, when: composing } # 拆分滤镜开关
+    - { accept: "Control+Shift+D", toggle: single_char, when: always} # 单字模式开关
     - { when: has_menu, accept: Right, send: Down } # 右方向键 向后移动焦点
     - { when: has_menu, accept: Left, send: Up } # 左方向键 向前移动焦点
     #- { when: always, accept: "Shift+space" , toggle: full_shape } # 全半角切换
