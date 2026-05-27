@@ -162,30 +162,25 @@ zhuyin_lookup:
     __include: common.yaml:/translator/pinyin_comment
 
 
-
 key_binder:
-  #  import_preset: default
   bindings:
-    #- { when: composing, accept: Return, send: Escape } # 回车清屏编码
-    #- { accept: space, send: space, when: has_menu } # 有候选时空格上屏首选
-    #- { accept: space, send: Escape, when: composing } # 无候选(空码）时空格清屏编码
     - { accept: semicolon, send: 2, when: has_menu } # 分号次选
-    - { when: has_menu, accept: apostrophe, send: 3 } # 引号三选
-    - { when: has_menu, accept: minus, send: Page_Up } # - 向后翻页
-    - { when: has_menu, accept: equal, send: Page_Down } # = 向前翻页
-    # - { when: composing, accept: bracketleft, send: Page_Up } # [ 后翻
-    # - { when: composing, accept: bracketright, send: Page_Down } # ] 前翻
-    - { accept: "Control+Shift+H", toggle: radical_spelling, when: composing } # 拆分滤镜开关
+    - { accept: apostrophe, send: 3, when: has_menu } # 引号三选
+    - { accept: minus, send: Page_Up, when: has_menu } # - 向后翻页
+    - { accept: equal, send: Page_Down, when: has_menu } # = 向前翻页
+    - { accept: Right, send: Down, when: has_menu } # 右方向键 向后移动焦点
+    - { accept: Left, send: Up, when: has_menu } # 左方向键 向前移动焦点
+    - { accept: "Control+Shift+F", toggle: zh_trad, when: always}
+    - { accept: "Control+Shift+P", toggle: personal, when: always}
+    - { accept: "Control+Shift+E", toggle: show_es, when: always}
+    - { accept: "Control+Shift+H", toggle: radical_spelling, when: always } # 拆分滤镜开关
     - { accept: "Control+Shift+D", toggle: single_char, when: always} # 单字模式开关
-    - { when: has_menu, accept: Right, send: Down } # 右方向键 向后移动焦点
-    - { when: has_menu, accept: Left, send: Up } # 左方向键 向前移动焦点
-    #- { when: always, accept: "Shift+space" , toggle: full_shape } # 全半角切换
 
 recognizer:
   import_preset: default
   patterns:
     email: "^[A-Za-z][-_.0-9A-Za-z]*@.*$"
-    mkst: "^[a-z]*`[a-z`]*$"
+    mkst: "^[a-z]+`[a-z`]*$"
     punct: "^/([0-9]0?|[A-Za-z]+)$"
     rvlk1: "^`[a-z]*'?$"
     rvlk2: "^`[a-z]*'?$"

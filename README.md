@@ -3,9 +3,12 @@
 ## 虎码
 在秃版的简码词库基础上，删除生僻字，专注于常用字，支持字根拆分显示（需要 TumanPUA 字体）。全码词库由 CC-CEDICT 词库整理而来。
 - 虎码链接：[官方网站](https://www.tiger-code.com/)
-- 虎码秃版：[压缩包](https://ys-e.ysepan.com/wap/huma/RkH8DaBQ5RhSfEE/9c6fD6jq4hDhGQa8Bs2IEfD2fV1iE3/%E8%99%8E%E7%A0%81%E7%A7%83%E7%89%88%20%E5%B0%8F%E7%8B%BC%E6%AF%AB%EF%BC%88Win%EF%BC%892026.03.01.7z)
+- 虎码秃版：[虎码网盘](https://huma.ysepan.com/) （路径为「03 虎码输入法下载 $\rightarrow$ ①Windows $\rightarrow$ 小狼毫 $\rightarrow$ 虎码秃版 小狼毫（Win）2026.03.01.7z」）
 
+1. 出简让全
 1. 使用 ` 键拼音反查
+1. 打字中使用 ` 键分词，分词的产生的短语上屏后会自动造词
+1. ; 键次选上屏，' 键三选上屏
 1. 使用 * 键通配非首位任意字符
 1. 使用 ~ 键以形查音（只支持单字）
 1. 使用 = 键触发计算器
