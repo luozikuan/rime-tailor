@@ -72,11 +72,11 @@ engine:
 speller:
   auto_select: false
   auto_clear: max_length
-  delimiter: "'"
+  delimiter: "`"
   max_code_length: 10000
   # 挂接的英文词库有时需要输入大写字母
-  alphabet: zyxwvutsrqponmlkjihgfedcbaZYXWVUTSRQPONMLKJIHGFEDCBA'
-  initials: zyxwvutsrqponmlkjihgfedcbaZYXWVUTSRQPONMLKJIHGFEDCBA'
+  alphabet: zyxwvutsrqponmlkjihgfedcbaZYXWVUTSRQPONMLKJIHGFEDCBA
+  initials: zyxwvutsrqponmlkjihgfedcbaZYXWVUTSRQPONMLKJIHGFEDCBA
   auto_select_pattern: ^[\w]{4}$
   algebra:  # 万能z键拼写处理，z符号匹配任意字符
     # - derive/^(...).$/$1z/
@@ -126,7 +126,7 @@ mkst:
   __include: /translator
   initial_quality: 100
   enable_sentence: true
-  # prefix: "'"
+  # prefix: "`"
   tips: "〔精准造词〕"
   tag: mkst
 
@@ -172,7 +172,7 @@ recognizer:
   import_preset: default
   patterns:
     email: "^[A-Za-z][-_.0-9A-Za-z]*@.*$"
-    mkst: "^[a-y]*'[a-y']*$"
+    mkst: "^[a-y]*`[a-y`]*$"
     punct: "^/([0-9]0?|[A-Za-z]+)$"
     rvlk1: "^z[a-z]*'?$"
     rvlk2: "^z[a-z]*'?$"
@@ -196,6 +196,8 @@ key_binder:
     - {accept: space, send: Escape, when: composing}
     #↓以下1條為空格上屏候選項.（句前加#将变为空格清空当前编码）
     - {accept: space, send: space, when: has_menu}
+    - { accept: semicolon, send: 2, when: has_menu } # 分号次选
+    - { accept: apostrophe, send: 3, when: has_menu } # 引号三选
     #↓以下1條為輸入狀態下回車退出輸入狀態.
     # - {accept: Return, send: Escape, when: composing}
     #↓以下1條為回車清空候選項.（句前加#将变为回车上屏当前编码,与上面一项同时注释才能生效）
