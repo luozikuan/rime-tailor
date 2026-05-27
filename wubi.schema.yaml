@@ -27,17 +27,6 @@ switches:
       states: [ 拆隐, 拆显 ]
 
 engine:
-  filters:
-    - simplifier
-    - "reverse_lookup_filter@ci_reverse_lookup"
-    - "reverse_lookup_filter@zhuyin_lookup"
-    - "lua_filter@*wubi_spelling"
-    - "lua_filter@*date_ts"
-    - "lua_filter@*autocap_filter"
-    - "simplifier@es_conversion"
-    - "simplifier@personal"
-    #↓以下1條為去重組件(此組件必須排到最後,不然會失效).
-    - uniquifier
   processors:
     - ascii_composer
     - recognizer
@@ -68,12 +57,23 @@ engine:
     - "history_translator@history"
     - "lua_translator@*calculator_translator"
     - "table_translator@easy_en"
+  filters:
+    - simplifier
+    - "reverse_lookup_filter@ci_reverse_lookup"
+    - "reverse_lookup_filter@zhuyin_lookup"
+    - "lua_filter@*wubi_spelling"
+    - "lua_filter@*date_ts"
+    - "lua_filter@*autocap_filter"
+    - "simplifier@es_conversion"
+    - "simplifier@personal"
+    #↓以下1條為去重組件(此組件必須排到最後,不然會失效).
+    - uniquifier
 
 speller:
   auto_select: false
   auto_clear: max_length
-  delimiter: "`"
   max_code_length: 10000
+  delimiter: "`"
   # 挂接的英文词库有时需要输入大写字母
   alphabet: zyxwvutsrqponmlkjihgfedcbaZYXWVUTSRQPONMLKJIHGFEDCBA
   initials: zyxwvutsrqponmlkjihgfedcbaZYXWVUTSRQPONMLKJIHGFEDCBA
@@ -94,14 +94,10 @@ translator:
   enable_encoder: false
   encode_commit_history: false
   max_phrase_length: 4
-  enable_completion: false
-  # preedit_format:
-  #   - 'xlit|abcdefghijklmnopqrstuvwxyz|ａｂｃｄｅｆｇｈｉｊｋｌｍｎｏｐｑｒｓｔｕｖｗｘｙｚ|'
-  comment_format:
-    - xform/~//
-  # preedit_format:
-  #   - 'xform/^([a-z]*)$/$1\t〈\U$1\E〉/'  # 注释掉本行将只显示键名提示而不显示英文编码提示
-  #   - "xlit|ABCDEFGHIJKLMNOPQRSTUVWXY|工子又大月土王目水日口田山已火之金白木禾立女人幺言|"
+  enable_completion: false	# 编码提示 true 开启  false 关闭
+  comment_format:  #提示码自定义
+    - "xform/~/ /" #去掉编码提示前的~号
+    # - "xform/^/ /" #提示前面 +间距
   disable_user_dict_for_patterns:
     - "^z.*$"
 
@@ -130,6 +126,7 @@ mkst:
   tips: "〔精准造词〕"
   tag: mkst
 
+# 拼音反查
 reverse_lookup:
   __include: /translator
   dictionary: pinyin
@@ -186,23 +183,12 @@ history:
 
 key_binder:
   bindings:
-    #↓以下2條為左右方向鍵翻页
-    - {accept: Left, send: Page_Up, when: has_menu}
-    - {accept: Right, send: Page_Down, when: has_menu}
-    #↓以下2條為-與=翻頁(退格键左边两个键).
-    - {accept: minus, send: Page_Up, when: has_menu}
-    - {accept: equal, send: Page_Down, when: has_menu}
-    #↓以下1條為輸入狀態下空格退出輸入狀態.
-    - {accept: space, send: Escape, when: composing}
-    #↓以下1條為空格上屏候選項.（句前加#将变为空格清空当前编码）
-    - {accept: space, send: space, when: has_menu}
     - { accept: semicolon, send: 2, when: has_menu } # 分号次选
     - { accept: apostrophe, send: 3, when: has_menu } # 引号三选
-    #↓以下1條為輸入狀態下回車退出輸入狀態.
-    # - {accept: Return, send: Escape, when: composing}
-    #↓以下1條為回車清空候選項.（句前加#将变为回车上屏当前编码,与上面一项同时注释才能生效）
-    # - {accept: Return, send: Escape, when: has_menu}
-    #↓以下為开关快捷键
+    - { accept: minus, send: Page_Up, when: has_menu } # - 向后翻页
+    - { accept: equal, send: Page_Down, when: has_menu } # = 向前翻页
+    - { accept: Right, send: Down, when: has_menu } # 右方向键 向后移动焦点
+    - { accept: Left, send: Up, when: has_menu } # 左方向键 向前移动焦点
     - {accept: "Control+Shift+dollar", toggle: zh_trad, when: always}
     - {accept: "Control+Shift+F", toggle: zh_trad, when: always}
     - {accept: "Control+Shift+P", toggle: personal, when: always}
