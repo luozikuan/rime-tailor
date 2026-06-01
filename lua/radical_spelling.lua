@@ -52,7 +52,7 @@ local function filter(input, env)
 
 					-- 显示字根
 					if show_radical then
-						local merged_radicals = radical.merge_items(radicals_list)
+						local merged_radicals = radical.merge_items(radicals_list, #merged_codes)
 						radical_info = merged_radicals .. "・" .. radical_info
 					end
 

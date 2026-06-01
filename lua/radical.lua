@@ -74,9 +74,12 @@ local function spelling_substring(text, start, len)
     return table.concat(result)
 end
 
-function radical.merge_items(items)
+function radical.merge_items(items, expect_len)
 	local n = #items
-	if n < 2 then return items[1] end
+	if n < 2 then
+		expect_len = expect_len or #items[1]
+		return spelling_substring(items[1], 1, expect_len)
+	end
 
 	if n == 2 then
 		return spelling_substring(items[1], 1, 2) ..
