@@ -55,6 +55,7 @@ engine:
     - "table_translator@fixed"
     - "table_translator@mkst"
     - "table_translator@zhuyin_fix"
+    - "history_translator@history"
     - "lua_translator@*calculator_translator"
     - "table_translator@easy_en"
   filters:
@@ -75,8 +76,8 @@ speller:
   max_code_length: 10000
   delimiter: "`"
   # 挂接的英文词库有时需要输入大写字母
-  alphabet: zyxwvutsrqponmlkjihgfedcbaZYXWVUTSRQPONMLKJIHGFEDCBA*
-  initials: zyxwvutsrqponmlkjihgfedcbaZYXWVUTSRQPONMLKJIHGFEDCBA*
+  alphabet: zyxwvutsrqponmlkjihgfedcbaZYXWVUTSRQPONMLKJIHGFEDCBA*`
+  initials: zyxwvutsrqponmlkjihgfedcbaZYXWVUTSRQPONMLKJIHGFEDCBA*`
   auto_select_pattern: ^[\w]{4}$
   algebra:  # 万能*键拼写处理，*符号匹配任意字符
     - derive/^(...).$/$1*/
@@ -171,6 +172,11 @@ recognizer:
     rvlk2: "^`[a-z]*'?$"
     zhuyin_fix: "~[a-z]*?$"
     expression: "^=.*$"
+
+history:
+  input: "`"
+  size: 1
+  initial_quality: 999
 
 key_binder:
   bindings:
