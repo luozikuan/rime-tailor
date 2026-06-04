@@ -179,7 +179,7 @@ recognizer:
 history:
   input: z
   size: 1
-  initial_quality: 1
+  initial_quality: 999
 
 key_binder:
   bindings:
@@ -194,7 +194,3 @@ key_binder:
     - {accept: "Control+Shift+P", toggle: personal, when: always}
     - {accept: "Control+Shift+E", toggle: show_es, when: always}
     - {accept: "Control+Shift+H", toggle: wubi_spelling, when: always}
-
-menu:
-  #↓以下1條為候选项数量.
-  page_size: 6
