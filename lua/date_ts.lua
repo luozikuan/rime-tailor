@@ -21,7 +21,7 @@ local function filter(input, env)
             local target_time = os.time() + offset * 86400
             local date_str = os.date("%Y%m%d", target_time)
             local genuine = cand:get_genuine()
-            genuine.preedit = genuine.preedit .. "〔" .. date_str .. " 📅〕"
+            genuine.preedit = genuine.preedit .. "〔日期：" .. date_str .. "〕"
         end
         yield(cand)
     end

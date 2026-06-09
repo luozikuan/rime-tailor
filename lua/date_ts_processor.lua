@@ -26,7 +26,7 @@ local function processor(key, env)
     if not cand then return 2 end
 
     local preedit = cand.preedit or ""
-    local y, m, d = preedit:match("〔(%d%d%d%d)(%d%d)(%d%d) 📅〕$")
+    local y, m, d = preedit:match("〔日期：(%d%d%d%d)(%d%d)(%d%d)〕$")
     if not y then return 2 end
 
     local result
