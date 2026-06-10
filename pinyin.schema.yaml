@@ -18,7 +18,6 @@ schema:
 __include: common.yaml:/switches
 __include: common.yaml:/opencc_config
 __include: common.yaml:/punctuator
-__include: common.yaml:/easy_en
 __include: common.yaml:/octagram/enable_wanxiang_grammar
 
 engine:
@@ -44,9 +43,7 @@ engine:
     - punct_translator
     - script_translator
     - "lua_translator@*calculator_translator"
-    - "table_translator@easy_en"
   filters:
-    - "lua_filter@*autocap_filter"
     - "simplifier@personal"
     - uniquifier
 

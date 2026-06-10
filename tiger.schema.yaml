@@ -10,12 +10,10 @@ schema:
     用 * 鍵匹配非首位的任意字根
   dependencies:
     - pinyin  # 拼音方案
-    - easy_en
     - tiger_spelling
 
 __include: common.yaml:/opencc_config
 __include: common.yaml:/punctuator
-__include: common.yaml:/easy_en
 
 switches:
   __include: common.yaml:/switches/switches
@@ -57,14 +55,12 @@ engine:
     - "table_translator@zhuyin_fix"
     - "history_translator@history"
     - "lua_translator@*calculator_translator"
-    - "table_translator@easy_en"
   filters:
     - simplifier
     - lua_filter@*single_char
     - "reverse_lookup_filter@ci_reverse_lookup"
     - "reverse_lookup_filter@zhuyin_lookup"
     - "lua_filter@*radical_spelling"  #拆分滤镜
-    - "lua_filter@*autocap_filter"
     - "simplifier@personal"
     - uniquifier #过滤重复
 
@@ -73,9 +69,8 @@ speller:
   auto_clear: max_length # 3种选择， manual|auto|max_length 空码按下一键确认清屏|空码自动清|达到最长码时后码顶上清屏
   max_code_length: 10000
   delimiter: "`"
-  # 挂接的英文词库有时需要输入大写字母
-  alphabet: zyxwvutsrqponmlkjihgfedcbaZYXWVUTSRQPONMLKJIHGFEDCBA*`
-  initials: zyxwvutsrqponmlkjihgfedcbaZYXWVUTSRQPONMLKJIHGFEDCBA*`
+  alphabet: zyxwvutsrqponmlkjihgfedcba*`
+  initials: zyxwvutsrqponmlkjihgfedcba*`
   auto_select_pattern: ^[\w]{4}$
   algebra:  # 万能*键拼写处理，*符号匹配任意字符
     - derive/^(...).$/$1*/

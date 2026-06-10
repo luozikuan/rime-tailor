@@ -28,13 +28,6 @@ opencc_config:
     tips: none # all/none, "〈Personal〉"
     inherit_comment: false # 继承注释
 
-easy_en:
-  easy_en:
-    __include: easy_en.schema:/translator
-    enable_completion: true
-    enable_sentence: false
-    initial_quality: -1
-
 algebra:
   wanxiang_tone_to_1234:
     - xform/^(.*)ā(.*)$/$1a$2①/

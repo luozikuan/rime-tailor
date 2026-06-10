@@ -12,12 +12,10 @@ schema:
     敲'键造词
   dependencies:
     - pinyin
-    - easy_en
     - wubi_spelling
 
 __include: common.yaml:/opencc_config
 __include: common.yaml:/punctuator
-__include: common.yaml:/easy_en
 
 switches:
   __include: common.yaml:/switches/switches
@@ -56,13 +54,11 @@ engine:
     - "table_translator@zhuyin_fix"
     - "history_translator@history"
     - "lua_translator@*calculator_translator"
-    - "table_translator@easy_en"
   filters:
     - simplifier
     - "reverse_lookup_filter@ci_reverse_lookup"
     - "reverse_lookup_filter@zhuyin_lookup"
     - "lua_filter@*wubi_spelling"
-    - "lua_filter@*autocap_filter"
     - "simplifier@personal"
     #↓以下1條為去重組件(此組件必須排到最後,不然會失效).
     - uniquifier
@@ -73,8 +69,8 @@ speller:
   max_code_length: 10000
   delimiter: "`"
   # 挂接的英文词库有时需要输入大写字母
-  alphabet: zyxwvutsrqponmlkjihgfedcbaZYXWVUTSRQPONMLKJIHGFEDCBA
-  initials: zyxwvutsrqponmlkjihgfedcbaZYXWVUTSRQPONMLKJIHGFEDCBA
+  alphabet: zyxwvutsrqponmlkjihgfedcba
+  initials: zyxwvutsrqponmlkjihgfedcba
   auto_select_pattern: ^[\w]{4}$
   algebra:  # 万能z键拼写处理，z符号匹配任意字符
     # - derive/^(...).$/$1z/
