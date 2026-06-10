@@ -33,7 +33,6 @@ engine:
     - navigator
     - express_editor
   filters:
-    - "simplifier@es_conversion"
     - "simplifier@personal"
     - uniquifier
 

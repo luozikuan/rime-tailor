@@ -31,7 +31,7 @@ engine:
   processors:
     - ascii_composer
     - recognizer
-    - "lua_processor@*date_ts_processor" # 日期快捷上屏，须在 key_binder 之前
+    - "lua_processor@*preedit_tips" # 快捷上屏，须在 key_binder 之前（否则 minus 被翻页吃掉）
     - key_binder
     - speller
     - punctuator
@@ -64,9 +64,7 @@ engine:
     - "reverse_lookup_filter@ci_reverse_lookup"
     - "reverse_lookup_filter@zhuyin_lookup"
     - "lua_filter@*radical_spelling"  #拆分滤镜
-    - "lua_filter@*date_ts"
     - "lua_filter@*autocap_filter"
-    - "simplifier@es_conversion"
     - "simplifier@personal"
     - uniquifier #过滤重复
 
@@ -189,7 +187,6 @@ key_binder:
     - {accept: "Control+Shift+dollar", toggle: zh_trad, when: always}
     - { accept: "Control+Shift+F", toggle: zh_trad, when: always}
     - { accept: "Control+Shift+P", toggle: personal, when: always}
-    - { accept: "Control+Shift+E", toggle: show_es, when: always}
     - { accept: "Control+Shift+H", toggle: radical_spelling, when: always } # 拆分滤镜开关
     - { accept: "Control+Shift+D", toggle: single_char, when: always} # 单字模式开关
 

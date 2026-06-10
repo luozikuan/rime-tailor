@@ -18,7 +18,6 @@ patch:
     save_options:  # 开关记忆（方案中的 switches），从方案选单（而非快捷键）切换时会记住的选项，需要记忆的开关不能设定 reset
       - zh_trad
       - personal
-      - show_es
       - wubi_spelling
       - radical_spelling
       - single_char

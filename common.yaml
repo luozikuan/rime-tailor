@@ -16,9 +16,6 @@ switches:
     - name: personal
       reset: 1
       states: [ 🙈, 🙉 ]
-    - name: show_es
-      reset: 0
-      states: [ 💀, 😄 ]
 
 opencc_config:
   simplifier:
@@ -29,12 +26,6 @@ opencc_config:
     opencc_config: personal.json
     option_name: personal
     tips: none # all/none, "〈Personal〉"
-    inherit_comment: false # 继承注释
-
-  es_conversion:
-    opencc_config: es.json
-    option_name: show_es
-    tips: none # all/none, "〈Emoji〉"
     inherit_comment: false # 继承注释
 
 easy_en:

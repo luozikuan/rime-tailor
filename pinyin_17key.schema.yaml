@@ -17,9 +17,7 @@ schema:
 engine:
   filters:
     - "lua_filter@*17key_preedit"   # MARK: 动态计算预编辑区的拼音
-    - "lua_filter@*date_ts"
     - "lua_filter@*autocap_filter"
-    - "simplifier@es_conversion"
     - "simplifier@personal"
     - uniquifier
 
