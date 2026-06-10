@@ -53,9 +53,6 @@ tone_fallback:
   exclude_patterns: # 排除模式(匹配到则不触发回退)
     - "`"                # 排除反查键 `
 
-menu:
-  # 候选项数量，由于 7890 用于输入声调，无法用于选择候选项，因此这里设置为 6
-  page_size: 6
 
 # 拼写设定
 speller:
@@ -87,7 +84,7 @@ speller:
       - derive/ong$/on/
       - 'erase/^.*5$/'
       # 符號標調
-      - 'xlit 1234 7890'
+      - 'xlit/1234/7890/'
 
 preedit_format_全拼:
   __append:
