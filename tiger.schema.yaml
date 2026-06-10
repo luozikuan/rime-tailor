@@ -122,9 +122,10 @@ reverse_lookup:
   dictionary: pinyin
   tips: "〔拼音反查〕"
   preedit_format:
-    - xform/([nl])v/$1ü/
-    - xform/([nl])ue/$1üe/
-    - xform/([jqxy])v/$1u/
+    __patch:
+      - pinyin.schema:/preedit_format_全拼
+      - common.yaml:/translator/preedit_7890_as_tone
+      - common.yaml:/translator/preedit_show_tone
   tag: rvlk2
 
 rvlk1:
@@ -161,8 +162,8 @@ recognizer:
     email: "^[A-Za-z][-_.0-9A-Za-z]*@.*$"
     mkst: "^[a-z]+`[a-z`]*$"
     punct: "^/([0-9]0?|[A-Za-z]+)$"
-    rvlk1: "^`[a-z]*'?$"
-    rvlk2: "^`[a-z]*'?$"
+    rvlk1: "^`[a-z7890]*'?$"
+    rvlk2: "^`[a-z7890]*'?$"
     zhuyin_fix: "~[a-z]*?$"
     expression: "^=.*$"
 
