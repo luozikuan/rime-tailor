@@ -73,9 +73,9 @@ speller:
   initials: zyxwvutsrqponmlkjihgfedcba*`
   auto_select_pattern: ^[\w]{4}$
   algebra:  # 万能*键拼写处理，*符号匹配任意字符
-    - derive/^(...).$/$1*/
-    - derive/^(..).(.*)$/$1*$2/
-    - derive/^(.).(.*)$/$1*$2/
+    # - derive/^(...).$/$1*/
+    # - derive/^(..).(.*)$/$1*$2/
+    # - derive/^(.).(.*)$/$1*$2/
     # - derive/^.(.*)$/*$1/  # 第一位通配，开启会导致*对应的符号无法打出，所以建议这种情况直接拼音反查算了
 
 translator:
