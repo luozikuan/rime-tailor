@@ -6,7 +6,6 @@ patch:
     - {schema: pinyin}
     - {schema: easy_en}
     - {schema: pinyin_sigma}
-    - {schema: wubi}
     - {schema: pinyin_flypy}
     - {schema: t9}
     - {schema: pinyin_17key}
