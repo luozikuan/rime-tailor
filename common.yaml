@@ -1,10 +1,10 @@
 punctuator:
   punctuator:
     import_preset: symbols
-    full_shape:
-      "\\" : "、"
     half_shape:
       "\\" : "、"
+      "<": "《"
+      ">": "》"
     digit_separators: ".:"
     digit_separator_action: commit
 
