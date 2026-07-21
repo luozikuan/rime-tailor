@@ -69,8 +69,8 @@ speller:
   auto_clear: max_length # 3种选择， manual|auto|max_length 空码按下一键确认清屏|空码自动清|达到最长码时后码顶上清屏
   max_code_length: 10000
   delimiter: "`"
-  alphabet: zyxwvutsrqponmlkjihgfedcba*
-  initials: zyxwvutsrqponmlkjihgfedcba*
+  alphabet: zyxwvutsrqponmlkjihgfedcba*`
+  initials: zyxwvutsrqponmlkjihgfedcba*`
   auto_select_pattern: ^[\w]{4}$
   algebra:  # 万能*键拼写处理，*符号匹配任意字符
     # - derive/^(...).$/$1*/
