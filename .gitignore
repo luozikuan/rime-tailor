@@ -12,3 +12,4 @@ user.yaml
 *.gram
 
 sync/*
+opencc/personal.txt
