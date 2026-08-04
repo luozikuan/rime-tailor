@@ -49,11 +49,22 @@ local date_offsets = {
     ["前天"] = -2,
     ["下周"] = 7,
     ["上周"] = -7,
+
+    -- 打单时使用
+    ["今"] = 0,
+    ["明"] = 1,
+    ["后"] = 2,
+    ["昨"] = -1,
+    ["前"] = -2,
 }
 
-local function get_tip(keys)
+local function xnor(a, b)
+    return (a and b) or (not a and not b)
+end
+
+local function get_tip(keys, single_option)
     for _, k in ipairs(keys) do
-        if k and k ~= "" then
+        if k and k ~= "" and xnor(single_option, utf8.len(k) == 1) then
             local offset = date_offsets[k]
             if offset then
                 local target_time = os.time() + offset * 86400
@@ -88,7 +99,9 @@ local function update_prompt(context, env)
         keys = { cand.text }
     end
 
-    env.current_tip = get_tip(keys)
+    local single_option = context:get_option("single_char")
+
+    env.current_tip = get_tip(keys, single_option)
 
     if env.current_tip and env.current_tip ~= "" then
         segment.prompt = "〔" .. env.current_tip .. "〕"

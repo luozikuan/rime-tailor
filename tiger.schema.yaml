@@ -22,7 +22,7 @@ switches:
       # reset: 1
       states: [ 拆隐, 拆显 ]
     - name: single_char
-      # reset: 0
+      reset: 1
       states: [ 词组, 单字 ]
 
 engine:
@@ -181,7 +181,6 @@ key_binder:
     - { accept: Right, send: Down, when: has_menu } # 右方向键 向后移动焦点
     - { accept: Left, send: Up, when: has_menu } # 左方向键 向前移动焦点
     - {accept: "Control+Shift+dollar", toggle: zh_trad, when: always}
-    - { accept: "Control+Shift+F", toggle: zh_trad, when: always}
     - { accept: "Control+Shift+P", toggle: personal, when: always}
     - { accept: "Control+Shift+H", toggle: radical_spelling, when: always } # 拆分滤镜开关
     - { accept: "Control+Shift+D", toggle: single_char, when: always} # 单字模式开关
