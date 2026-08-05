@@ -31,7 +31,7 @@ local function load_file(path)
     local f = io.open(path, "r")
     if not f then return end
     for line in f:lines() do
-        local value, key = line:match("([^\t]+)\t([^\t]+)")
+        local value, key = line:match("([^\t]+)\t([^\t\r\n]+)")
         if key and value then
             _db[key] = value
         end
