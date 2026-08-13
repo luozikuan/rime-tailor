@@ -9,8 +9,9 @@ schema:
     敲 ` 鍵進入拼音反查
     用 * 鍵匹配非首位的任意字根
   dependencies:
-    - pinyin  # 拼音方案
+    - pinyin
     - tiger_spelling
+    - charset_filter
 
 __include: common.yaml:/opencc_config
 __include: common.yaml:/punctuator
@@ -24,6 +25,9 @@ switches:
     - name: single_char
       reset: 1
       states: [ 词组, 单字 ]
+    - name: extended_char
+      reset: 1
+      states: [ 全集, 常用 ]
 
 engine:
   processors:
@@ -56,8 +60,9 @@ engine:
     - "history_translator@history"
     - "lua_translator@*calculator_translator"
   filters:
-    - simplifier
     - lua_filter@*single_char
+    - lua_filter@*charset_filter # 放在 simplifier 前面，先做过滤避免转换为繁体字后被过滤掉
+    - simplifier
     - "reverse_lookup_filter@ci_reverse_lookup"
     - "reverse_lookup_filter@zhuyin_lookup"
     - "lua_filter@*radical_spelling"  #拆分滤镜
@@ -186,4 +191,5 @@ key_binder:
     - { accept: "Control+Shift+P", toggle: personal, when: always}
     - { accept: "Control+Shift+H", toggle: radical_spelling, when: always } # 拆分滤镜开关
     - { accept: "Control+Shift+D", toggle: single_char, when: always} # 单字模式开关
+    - { accept: "Control+Shift+E", toggle: extended_char, when: always} # 自定字集开关
 
