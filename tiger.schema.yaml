@@ -22,8 +22,9 @@ switches:
     - name: radical_spelling
       # reset: 1
       states: [ 拆隐, 拆显 ]
+      abbrev: [ 隐, 显 ]
     - name: single_char
-      reset: 1
+      # reset: 1
       states: [ 词组, 单字 ]
     - name: extended_char
       reset: 1
