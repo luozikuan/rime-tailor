@@ -1,0 +1,8 @@
+# Internal native ASCII-composer configuration. Do not add to schema_list.
+schema:
+  schema_id: tiger_sentence_ascii
+  name: 虎整句内部切换配置
+  version: "1"
+ascii_composer:
+  switch_key:
+    Shift_L: noop

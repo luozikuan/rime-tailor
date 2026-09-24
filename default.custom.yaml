@@ -2,13 +2,14 @@ patch:
 
   # 方案列表
   schema_list:
-    - {schema: tiger}
-    - {schema: pinyin}
-    - {schema: easy_en}
-    - {schema: pinyin_sigma}
-    - {schema: pinyin_flypy}
-    - {schema: t9}
-    - {schema: pinyin_17key}
+    - schema: tiger_sentence
+    - schema: tiger
+    - schema: pinyin
+    - schema: easy_en
+    - schema: pinyin_sigma
+    - schema: pinyin_flypy
+    - schema: t9
+    - schema: pinyin_17key
 
   # 方案选单相关
   switcher:
@@ -18,7 +19,6 @@ patch:
     save_options:  # 开关记忆（方案中的 switches），从方案选单（而非快捷键）切换时会记住的选项，需要记忆的开关不能设定 reset
       - zh_trad
       - personal
-      - wubi_spelling
       - radical_spelling
       - single_char
       - extended_char

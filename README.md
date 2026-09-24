@@ -1,7 +1,7 @@
 「裁缝铺」输入方案，把不同来源“剪裁、拼接、定制”成一套适合自己的方案。
 
 ## 通用功能
-后续描述的各个方案都支持以下功能：
+后续描述的各个方案都支持以下功能（虎码整句版除外）：
 1. 开头使用 = 键触发计算器
 1. 在 opencc/personal.txt 中添加个人隐私信息，例如手机号、地址等
    - opencc/personal.example.txt 是格式示例文件
@@ -10,6 +10,8 @@
 
 
 ## 虎码
+
+#### 字词版
 在秃版的基础上，修改词库为 CC-CEDICT 词库。
 - 虎码链接：[官方网站](https://www.tiger-code.com/)
 - 虎码秃版：[虎码网盘](https://huma.ysepan.com/) （路径为「03 虎码输入法下载 $\rightarrow$ ①Windows $\rightarrow$ 小狼毫 $\rightarrow$ 虎码秃版 小狼毫（Win）2026.03.01.7z」）
@@ -23,6 +25,20 @@
 1. 输入过程中分号键次选上屏，单引号键三选上屏
 1. 在 tiger.extended.dict.yaml 中添加个人常用词，例如人名，常打的特殊短语等
 
+#### 整句版
+在官方整句的基础上，加上拼音反查。模型文件需自行下载并将 `sentence-ngram-mobile.bin` 放到 `models/` 文件夹下
+- 官方整句：[github](https://github.com/lvyww/tiger-sentense-rime)
+- 模型链接：[github](https://github.com/lvyww/tiger-sentense-rime/releases/tag/model)
+
+1. 连续输入每个单字的编码，中间不按空格
+1. 一简字至少输入两码：“我”输入 `tu`
+1. 前 1500 字使用最优码：最短且不选重
+1. “的”字由 `un` 特设为 `ue`
+1. 非首选字词组句时，必须嵌入选重键或数字： `hh2ah` $\rightarrow$ 慢慢来，`b;ot` $\rightarrow$ 如果是
+1. 整句候选请用 Tab 或方向键切换，不能用数字键直接选择
+1. 以下单字编码有变，建议集中练习：敌强层吐档羊首络仅汽施启存题者耆簇办谦近集匕审种轼射烁
+1. 补充语料：`tiger_sentence.supplement.txt`
+1. 开头使用 ` 键拼音反查，反查时支持将 7890 作为声调输入
 
 ## 拼音
 和地球拼音一样使用 CC-CEDICT 词库整理成简体字的带声调版本，可使用声调来降低重码率，使用了万象方案中的词频。

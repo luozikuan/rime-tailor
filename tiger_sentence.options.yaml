@@ -1,0 +1,4 @@
+options:
+  tiger_sentence_allow_duplicate_single: true
+  tiger_sentence_early_commit: true
+  tiger_sentence_early_commit_to_preedit: false

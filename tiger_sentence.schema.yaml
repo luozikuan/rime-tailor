@@ -1,0 +1,122 @@
+# encoding: utf-8
+schema:
+  schema_id: tiger_sentence
+  name: 虎整句
+  version: "1.4"
+  author:
+    - TigerClaw
+  description: |
+    从虎整句常用字词表生成的变长整句方案。
+    码表/字频/白名单为明文 txt（tiger_sentence.codes.txt 等），运行时加载，
+    不使用 Rime 词典文件或用户覆盖层；可直接替换以导入其它形码方案。
+    只有整个独立输入作为单一码表边时才隐式允许非首选。
+    允许单字重码组句默认开启：分段路径中的非首选单字按语言模型分数竞争，
+    非首选多字词仍必须显式选重；分号/引号/数字写入编码选重。
+    首次输入时用 Lua 优先分页加载 sentence-ngram-mobile.bin 做 Kneser-Ney 打分。
+    形码证据和紧凑词先验仅重排现有候选，不进入自动上屏置信度。
+  dependencies:
+    - pinyin
+
+switches:
+  - name: ascii_mode
+    reset: 0
+    states: [ 中文, 西文 ]
+  - name: ascii_punct
+    states: [ 。，, ．， ]
+  - name: full_shape
+    states: [ 半角, 全角 ]
+  - name: tiger_sentence_early_commit
+    states: [ 提前上屏关, 提前上屏开 ]
+  - name: tiger_sentence_allow_duplicate_single
+    states: [ 单字重码组句关, 单字重码组句开 ]
+  - name: tiger_sentence_early_commit_to_preedit
+    states: [ 提前上屏至应用, 提前上屏至编码 ]
+engine:
+  processors:
+    - lua_processor@*tiger_sentence*ascii_component
+    - recognizer
+    - key_binder
+    - lua_processor@*tiger_sentence*processor_component
+    - speller
+    - punctuator
+    - selector
+    - navigator
+    - express_editor
+  segmentors:
+    - matcher
+    - abc_segmentor
+    - affix_segmentor@rvlk
+    - punct_segmentor
+    - fallback_segmentor
+  translators:
+    - punct_translator
+    - script_translator@rvlk
+    - lua_translator@*tiger_sentence*translator
+  filters:
+    - lua_filter@*tiger_sentence*buffer_filter
+    - lua_filter@*tiger_yin_comment
+    - uniquifier #过滤重复
+
+__include: common.yaml:/opencc_config
+
+speller:
+  alphabet: "zyxwvutsrqponmlkjihgfedcba;'0123456789~"
+  initials: "abcdefghijklmnopqrstuvwxyz~"
+  delimiter: " "
+  auto_select: false
+
+tiger_sentence:
+  # Default distribution profile; override with balanced in a custom patch if needed.
+  memory_profile: compact
+  # First-use defaults only. Explicit choices persist across input sessions.
+  option_defaults:
+    tiger_sentence_early_commit: true
+    tiger_sentence_allow_duplicate_single: true
+    tiger_sentence_early_commit_to_preedit: false
+  # Learn submitted candidate corrections (direct taps and Tab selections).
+  tab_learning: true
+  # 提前上屏与空码自动上屏共用的最短保留编码数；0 表示不额外限制。
+  # 概率型提前上屏仍永远不少于 3。
+  min_retained_raw_length: 0
+  # 高频字仅使用最优码组句的字数上限；0 表示全部放开非最优码。
+  high_freq_limit: 1500
+
+key_binder:
+  bindings:
+    - { when: has_menu, accept: Tab, send: Down }
+    - { when: has_menu, accept: Shift+Tab, send: Up }
+    - { when: paging, accept: minus, send: Page_Up }
+    - { when: has_menu, accept: equal, send: Page_Down }
+
+__include: common.yaml:/punctuator
+
+rvlk:
+  tag: rvlk
+  dictionary: pinyin
+  prefix: "`"
+  tips: "〔拼音反查〕"
+  initial_quality: -1
+  enable_completion: true
+  enable_user_dict: false
+  enable_auto_phrase: false
+  spelling_hints: 50
+  preedit_format:
+    __patch:
+      - pinyin.schema:/preedit_format_全拼
+      - common.yaml:/translator/preedit_7890_as_tone
+      - common.yaml:/translator/preedit_show_tone
+
+
+recognizer:
+  import_preset: default
+  patterns:
+    rvlk: "^`[A-Za-z7890']*$"
+
+ascii_composer:
+  good_old_caps_lock: true
+  switch_key:
+    Caps_Lock: clear
+    Shift_L: commit_code
+    Shift_R: commit_code
+    Control_L: noop
+    Control_R: noop
