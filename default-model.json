@@ -1,8 +1,24 @@
 {
-  "name": "full-kn-m5-v2",
-  "format": "TCSKNM02",
-  "filename": "sentence-ngram-mobile.bin",
-  "bytes": 469886928,
-  "sha256": "c0063898fdff27c1fb00c1c72fa28a6c1b375fade1ec2045d731b9db958bdecc",
-  "profile": "compact"
+  "name": "corpus4-articles-nonnews-50-25-25-mainline-budget-q8",
+  "format": "TCSKNM03",
+  "filename": "sentence-fivegram-mobile.bin",
+  "bytes": 405663171,
+  "sha256": "756f6c92cf43ad6e8e3087ce66b711ac6ad0fc41e6f3fb82b3766e35ecab8681",
+  "profile": "compact",
+  "order": 5,
+  "format_version": 2,
+  "quantization_bits": 8,
+  "counts": [
+    20799,
+    7959327,
+    69562625,
+    10273459,
+    8415769
+  ],
+  "weights": {
+    "corpus4_wsmerge": 0.5,
+    "articles": 0.25,
+    "brightmart_nonnews": 0.25
+  },
+  "pruning": "history-weighted single-deletion KL, protected prefixes, recomputed backoff"
 }

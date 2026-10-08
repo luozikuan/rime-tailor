@@ -348,6 +348,65 @@ function M.fusion_event(mode, raw, direct, composed, direct_wins, raw_end)
     }
 end
 
+-- Final-menu preferences are isolated from lexical/fragment rewards and the
+-- Direct/Composed fusion namespace. Only an exact submitted choice creates E.
+function M.exact_correction_mode(mode)
+    return mode == "" and "" or ("exact-correction-v1|" .. mode)
+end
+
+function M.exact_correction_pair_code(raw, exact, corrected)
+    return "~c" .. M.hash((raw or "") .. "\0E\0" .. (exact or "") .. "\0C\0" .. (corrected or ""))
+end
+
+function M.exact_correction_score(index, mode, raw, exact, corrected)
+    if not index or mode == "" then return 0 end
+    return M.score(index, M.exact_correction_mode(mode),
+        M.exact_correction_pair_code(raw, exact, corrected), "E", "")
+end
+
+function M.exact_correction_event(mode, raw, exact, corrected, raw_end)
+    if mode == "" then return nil end
+    return {
+        time=os.time(), mode=M.exact_correction_mode(mode),
+        code=M.exact_correction_pair_code(raw, exact, corrected), text="E", context="",
+        raw_start=0, raw_end=math.max(0, raw_end or #raw), text_start=0, text_end=1
+    }
+end
+
+function M.apply_exact_correction_ordering(index, mode, raw, candidates, affected)
+    if not index or mode == "" or #candidates < 2 then return candidates, false end
+    local exact, corrected, position = {}, {}, {}
+    for i, item in ipairs(candidates) do
+        local list = affected(item) and corrected or exact
+        list[#list + 1] = item
+        position[item] = i
+    end
+    if #exact == 0 or #corrected == 0 then return candidates, false end
+    -- Keep both source chains stable. A preference for a later exact candidate
+    -- carries only the necessary exact prefix past the current corrected head.
+    local merged, ei, ci = {}, 1, 1
+    while ei <= #exact and ci <= #corrected do
+        local blocked = false
+        for i = ei, #exact do
+            if M.exact_correction_score(index, mode, raw, exact[i].text, corrected[ci].text) > 0 then
+                blocked = true; break
+            end
+        end
+        if blocked or position[exact[ei]] < position[corrected[ci]] then
+            merged[#merged + 1] = exact[ei]; ei = ei + 1
+        else
+            merged[#merged + 1] = corrected[ci]; ci = ci + 1
+        end
+    end
+    while ei <= #exact do merged[#merged + 1] = exact[ei]; ei = ei + 1 end
+    while ci <= #corrected do merged[#merged + 1] = corrected[ci]; ci = ci + 1 end
+    local changed = false
+    for i, item in ipairs(merged) do if candidates[i] ~= item then changed = true; break end end
+    if not changed then return candidates, false end
+    for i, item in ipairs(merged) do candidates[i] = item end
+    return candidates, true
+end
+
 function M.reward(index, mode, raw, text, finish, previous)
     local best, potential, start = previous.learning_score or 0, 0, previous
     local early_bonus = previous.learning_early_commit_bonus or 0
@@ -406,6 +465,69 @@ function M.diff(raw, before, selected, floor, mode)
         end
     end
     return result
+end
+
+function M.reinforce_existing(index, raw, before, selected, floor, mode)
+    if not index or not index.codes or #index.codes == 0 or not before or not selected or
+        before.text == selected.text or mode == "" then return {} end
+    local function boundaries(item)
+        local map, ends, node = {[0]=0}, {}, item.path
+        while node and (node.raw_length or 0) > 0 do
+            map[node.raw_length] = node.text_length
+            ends[#ends + 1] = node.raw_length
+            node = node.previous
+        end
+        table.sort(ends)
+        local r, t = 0, 0
+        for _, last in ipairs(ends) do
+            if last <= r or map[last] <= t or map[last] > #item.text then return nil end
+            r, t = last, map[last]
+        end
+        if r ~= #raw or t ~= #item.text then return nil end
+        return map, ends
+    end
+    local a, aends = boundaries(before)
+    local b, bends = boundaries(selected)
+    if not a or not b then return {} end
+    local points = {0}; for _, value in ipairs(bends) do points[#points + 1] = value end
+    local result, previous = {}, 0
+    for _, last in ipairs(aends) do
+        if b[last] then
+            local changed = selected.text:sub(b[previous] + 1, b[last])
+            local old = before.text:sub(a[previous] + 1, a[last])
+            if previous >= floor and changed ~= old then
+                local matches = {}
+                for i = 1, #points - 1 do
+                    local rs = points[i]
+                    if rs >= previous and rs < last then
+                        for j = i + 1, #points do
+                            local re = points[j]
+                            if re > last then break end
+                            local text = selected.text:sub(b[rs] + 1, b[re])
+                            local n = #chars(text)
+                            if n > 0 and n <= 16 and static(text) and not before.text:find(text, 1, true) then
+                                local code = raw:sub(rs + 1, re):lower()
+                                local ctx = context(selected.text:sub(1, b[rs]))
+                                if M.score(index, mode, code, text, ctx) > 0 then
+                                    matches[#matches + 1] = {rs=rs,re=re,ts=b[rs],te=b[re],n=n,code=code,text=text,context=ctx}
+                                end
+                            end
+                        end
+                    end
+                end
+                local best, count = nil, 0
+                for _, m in ipairs(matches) do if not best or m.n > best.n then best, count = m, 1 elseif m.n == best.n then count = count + 1 end end
+                if best and count == 1 then
+                    local contains = true
+                    for _, m in ipairs(matches) do if m.rs < best.rs or m.re > best.re then contains = false; break end end
+                    if contains then result[#result + 1] = {time=os.time(),mode=mode,code=best.code,text=best.text,context=best.context,
+                        raw_start=best.rs,raw_end=best.re,text_start=best.ts,text_end=best.te} end
+                end
+            end
+            previous = last
+        end
+    end
+    return #result == 1 and result or {}
 end
 
 local stores = {}

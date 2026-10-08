@@ -1,7 +1,7 @@
 -- TigerClaw-style sentence lattice for Rime, with optional Lua KN scoring.
 -- Lexicon data is loaded from plain-text files (see load_lexicon_data below),
 -- so users can edit or replace the code table without re-running exporters.
--- Pure Lua Kneser-Ney V2 reader. TCSKNM02 uses paged I/O and a bounded cache.
+-- Pure Lua TCSKNM03 Q8 fivegram reader with paged I/O and bounded caches.
 local BOS = "\2"
 local EOS = "\3"
 local ISOLATION_CACHE_ENTRIES = 8192
@@ -657,6 +657,7 @@ end
 supplement.file_name = file_name
 supplement.reward_for_weight = reward_for_weight
 
+local correction = require("tiger_sentence_correction")
 local beam_width = 200
 -- A 200-wide beam protects ambiguity near the start of a sentence. Once a
 -- long composition already has substantial left context, retaining all 200
@@ -719,10 +720,10 @@ local model_generation = 0
 local model_failure = {} -- Only model-operation failures may trigger decode retry.
 
 local function call_model(model, operation, ...)
-    local ok, value = pcall(model[operation], ...)
-    if ok and (operation ~= "logp" or
+    local ok, value, v2, v3, v4, v5, v6 = pcall(model[operation], ...)
+    if ok and ((operation ~= "logp" and operation ~= "step") or
         (type(value) == "number" and value == value and math.abs(value) < math.huge)) then
-        return value
+        return value, v2, v3, v4, v5, v6
     end
     model_failure.reason = ok and "non-finite model probability" or tostring(value)
     error(model_failure, 0)
@@ -741,6 +742,9 @@ local has_supplements = (supplement_matcher.count or 0) > 0
 do
     local paths = {}
     for _, directory in ipairs(data_directories()) do
+        -- librime cleanup_trash moves top-level *.bin files during deployment.
+        paths[#paths + 1] = join_path(directory, "models/tiger_sentence.lexical.bin")
+        -- Compatibility with older packs; new packs only ship models/.
         paths[#paths + 1] = join_path(directory, "tiger_sentence.lexical.bin")
     end
     ranking_prior.lexical_model, ranking_prior.lexical_load_error =
@@ -1051,6 +1055,22 @@ local function logp(prev2, prev1, target)
     return value
 end
 
+function ranking_prior.begin_search_history()
+    local model = ensure_kn()
+    if model and model.step then
+        return model.bos_id, 0, 0, 0, 1
+    end
+    return 0, 0, 0, 0, 0
+end
+
+function ranking_prior.search_logp(lm1, lm2, lm3, lm4, lm_count, prev2, prev1, target)
+    local model = ensure_kn()
+    if model and model.step then
+        return call_model(model, "step", lm1, lm2, lm3, lm4, lm_count, target)
+    end
+    return logp(prev2, prev1, target), lm1, lm2, lm3, lm4, lm_count
+end
+
 local function trailing_selector_span(raw)
     local index = #raw
     while index >= 1 do
@@ -1190,7 +1210,17 @@ local function isolation_penalty(text)
         end
     end
     local old_key = isolation_cache_keys[isolation_cache_next]
-    if old_key then isolation_cache[old_key] = nil end
+    if old_key then
+        -- Evict a batch to keep hash insertion headroom after a rehash.
+        for i = 0, math.ceil(ISOLATION_CACHE_ENTRIES / 4) - 1 do
+            local slot = (isolation_cache_next + i - 1) % ISOLATION_CACHE_ENTRIES + 1
+            local victim = isolation_cache_keys[slot]
+            if victim then
+                isolation_cache[victim] = nil
+                isolation_cache_keys[slot] = nil
+            end
+        end
+    end
     isolation_cache[text] = penalty
     isolation_cache_keys[isolation_cache_next] = text
     isolation_cache_next = isolation_cache_next % ISOLATION_CACHE_ENTRIES + 1
@@ -1570,6 +1600,7 @@ local function ensure_aggregated(bucket)
 end
 
 local function add_state(bucket, item)
+    if correction.searching then return correction.add(bucket, item) end
     if bucket._frozen then
         bucket._frozen = nil
         ensure_aggregated(bucket)
@@ -1686,10 +1717,16 @@ local function new_states(length)
     for index = 0, length do
         states[index] = new_bucket()
     end
+    local lm1, lm2, lm3, lm4, lm_count = ranking_prior.begin_search_history()
     add_state(states[0], {
         score = 0,
         mass_score = 0,
         text = "",
+        lm1 = lm1,
+        lm2 = lm2,
+        lm3 = lm3,
+        lm4 = lm4,
+        lm_count = lm_count,
         prev2 = BOS,
         prev1 = BOS,
         max_rank = 1,
@@ -1713,113 +1750,143 @@ local function expand_range(raw, states, from_pos, length, minimum_consumed_end)
     local code_reward_per_key = ensure_kn() and ranking_prior.canonical_code_reward or 0.0
     local protect_primary_rare = ranking_prior.canonical_isolation_factor < 1.0
     for position = from_pos, length - 1 do
-        local current = dedup_limit(states[position], beam_limit_at(position))
+        if correction.searching then correction.searching.position = position end
+        local current = correction.searching and
+            correction.current(states[position], correction.searching.exact[position], position) or
+            dedup_limit(states[position], beam_limit_at(position))
         states[position] = current
         if #current > 0 then
             for i = 1, #lexicon_state.lengths do
                 local code_length = lexicon_state.lengths[i]
                 if position + code_length <= length then
-                    local code = raw:sub(position + 1, position + code_length)
-                    local candidates = lexicon_state.codes[code]
-                    if candidates then
-                        local selected_rank, consumed_end = parse_selector(raw, position + code_length)
-                        local whole_input_edge = position == 0 and consumed_end == length
-                        if consumed_end > minimum_consumed_end and
-                            not (length > 1 and consumed_end - position < 2) then
-                            local selected_candidates = eligible_candidates(
-                                candidates, selected_rank, whole_input_edge,
-                                active_allow_duplicate_single)
-                            -- A descendant cannot recover probability mass
-                            -- already discarded at an earlier lattice boundary.
-                            if #selected_candidates > 0 and current._truncated then
-                                states[consumed_end]._truncated = true
-                            end
-                            for c = 1, #current do
-                                local item = current[c]
-                                for k = 1, #selected_candidates do
-                                    local candidate = selected_candidates[k]
-                                    local score = item.score
-                                    local prev2, prev1 = item.prev2, item.prev1
-                                    local supplement_state = item.supplement_state or 1
-                                    local supplement_added = 0.0
-                                    local chars = candidate_chars(candidate)
-                                    for ci = 1, #chars do
-                                        score = score + logp(prev2, prev1, chars[ci])
-                                        score = score + emitted_character_reward
-                                        if has_supplements then
-                                            local supplement_reward
-                                            supplement_state, supplement_reward = supplement.advance(
-                                                supplement_matcher, supplement_state, chars[ci])
-                                            score = score + supplement_reward
-                                            supplement_added = supplement_added + supplement_reward
+                    local original_code = raw:sub(position + 1, position + code_length)
+                    local variants = correction.searching and correction.variants(original_code, lexicon_state)
+                    for vi = 0, variants and #variants or 0 do
+                        local variant = vi > 0 and variants[vi] or nil
+                        local code = variant and variant.code or original_code
+                        local candidates = lexicon_state.codes[code]
+                        if candidates then
+                            local selected_rank, consumed_end = parse_selector(raw, position + code_length)
+                            local whole_input_edge = position == 0 and consumed_end == length
+                            if consumed_end > minimum_consumed_end and
+                                not (variant and selected_rank > 0) and
+                                not (length > 1 and consumed_end - position < 2) then
+                                local selected_candidates = eligible_candidates(
+                                    candidates, selected_rank, whole_input_edge,
+                                    active_allow_duplicate_single)
+                                -- A descendant cannot recover probability mass
+                                -- already discarded at an earlier lattice boundary.
+                                if #selected_candidates > 0 and current._truncated then
+                                    states[consumed_end]._truncated = true
+                                end
+                                for c = 1, #current do
+                                    local item = current[c]
+                                    local edits = (item.correction_count or 0) + (variant and variant.count or 0)
+                                    if not correction.searching or (edits > 0 and edits <= 2) then
+                                        for k = 1, #selected_candidates do
+                                            local candidate = selected_candidates[k]
+                                            local score = item.score
+                                            local prev2, prev1 = item.prev2, item.prev1
+                                            local lm1, lm2, lm3, lm4, lm_count =
+                                                item.lm1, item.lm2, item.lm3, item.lm4, item.lm_count
+                                            local supplement_state = item.supplement_state or 1
+                                            local supplement_added = 0.0
+                                            local chars = candidate_chars(candidate)
+                                            if not correction.searching or correction.reserve(edits,#chars) then
+                                            for ci = 1, #chars do
+                                                local probability
+                                                probability, lm1, lm2, lm3, lm4, lm_count = ranking_prior.search_logp(
+                                                    lm1, lm2, lm3, lm4, lm_count,
+                                                    prev2, prev1, chars[ci])
+                                                score = score + probability
+                                                score = score + emitted_character_reward
+                                                if has_supplements then
+                                                    local supplement_reward
+                                                    supplement_state, supplement_reward = supplement.advance(
+                                                        supplement_matcher, supplement_state, chars[ci])
+                                                    score = score + supplement_reward
+                                                    supplement_added = supplement_added + supplement_reward
+                                                end
+                                                prev2 = prev1
+                                                prev1 = chars[ci]
+                                            end
+                                            if selected_rank == 0 then
+                                                if candidate._log_rank == nil then
+                                                    candidate._log_rank = math.log(candidate.r)
+                                                end
+                                                score = score - rank_penalty * candidate._log_rank
+                                            end
+                                            local code_reward_added = 0.0
+                                            if code_reward_per_key > 0.0 and selected_rank == 0 and
+                                                candidate.primary_single and #chars == 1 then
+                                                -- Longer primary spellings carry more
+                                                -- shape evidence than two-key ones.
+                                                -- Summing covered raw keys also makes
+                                                -- the feature neutral when two paths
+                                                -- both explain every key canonically.
+                                                code_reward_added = code_reward_per_key * code_length
+                                            end
+                                            local whole_input_single_character_reward_added = 0.0
+                                            if whole_input_edge and selected_rank == 0 and
+                                                candidate.optimal_single and candidate_is_single(candidate) then
+                                                whole_input_single_character_reward_added =
+                                                    whole_input_single_character_reward
+                                                score = score + whole_input_single_character_reward_added
+                                            end
+                                            local text = item.text .. candidate.t
+                                            local direct_edge = item.previous == nil and position == 0 and whole_input_edge
+                                            local learned = item.learning_score or 0
+                                            local potential = 0
+                                            local learning_early_bonus = item.learning_early_commit_bonus or 0
+                                            if not direct_edge and not correction.searching and not item.correction_history then
+                                                learned, potential, learning_early_bonus = learning.reward(
+                                                    learning_index, learning_mode, raw, text, consumed_end, item)
+                                                if learned > 0 or potential > 0 then learning_affected = true end
+                                            end
+                                            if correction.searching then learned, potential, learning_early_bonus = 0, 0, 0 end
+                                            add_state(states[consumed_end], {
+                                                score = score + learned - (item.learning_score or 0) -
+                                                    (variant and variant.count * correction.search_penalty or 0),
+                                                correction_count = correction.searching and edits or nil,
+                                                corrected_code = variant and code or nil,
+                                                correction_history = item.correction_history,
+                                                learning_score = learned,
+                                                learning_potential = potential,
+                                                learning_early_commit_bonus = learning_early_bonus,
+                                                mass_score = (item.mass_score or item.score) +
+                                                    score - item.score - supplement_added -
+                                                    whole_input_single_character_reward_added,
+                                                text = text,
+                                                lm1 = lm1,
+                                                lm2 = lm2,
+                                                lm3 = lm3,
+                                                lm4 = lm4,
+                                                lm_count = lm_count,
+                                                prev2 = prev2,
+                                                prev1 = prev1,
+                                                max_rank = math.max(item.max_rank or 1, candidate.r),
+                                                source_mask = direct_edge and learning.source_direct or learning.source_composed,
+                                                direct_rank = direct_edge and candidate.r or math.huge,
+                                                supplement_state = supplement_state,
+                                                supplement_score = (item.supplement_score or 0.0) +
+                                                    supplement_added,
+                                                code_score = (item.code_score or 0.0) +
+                                                    code_reward_added,
+                                                previous = item,
+                                                edge_chars = chars,
+                                                edge_primary_single =
+                                                    protect_primary_rare and #chars == 1 and
+                                                    (candidate.primary_single or selected_rank > 0),
+                                                edge_code_length = protect_primary_rare and code_length or nil,
+                                                text_length = #text,
+                                                text_char_count = (utf8 and utf8.len and item.text_char_count) and
+                                                    item.text_char_count + #chars or nil,
+                                                raw_length = consumed_end,
+                                                edge_count = (item.edge_count or 0) + 1
+                                            })
+                                            end -- whole-edge budget reservation
                                         end
-                                        prev2 = prev1
-                                        prev1 = chars[ci]
                                     end
-                                    if selected_rank == 0 then
-                                        if candidate._log_rank == nil then
-                                            candidate._log_rank = math.log(candidate.r)
-                                        end
-                                        score = score - rank_penalty * candidate._log_rank
-                                    end
-                                    local code_reward_added = 0.0
-                                    if code_reward_per_key > 0.0 and selected_rank == 0 and
-                                        candidate.primary_single and #chars == 1 then
-                                        -- Longer primary spellings carry more
-                                        -- shape evidence than two-key ones.
-                                        -- Summing covered raw keys also makes
-                                        -- the feature neutral when two paths
-                                        -- both explain every key canonically.
-                                        code_reward_added = code_reward_per_key * code_length
-                                    end
-                                    local whole_input_single_character_reward_added = 0.0
-                                    if whole_input_edge and selected_rank == 0 and
-                                        candidate.optimal_single and candidate_is_single(candidate) then
-                                        whole_input_single_character_reward_added =
-                                            whole_input_single_character_reward
-                                        score = score + whole_input_single_character_reward_added
-                                    end
-                                    local text = item.text .. candidate.t
-                                    local direct_edge = item.previous == nil and position == 0 and whole_input_edge
-                                    local learned = item.learning_score or 0
-                                    local potential = 0
-                                    local learning_early_bonus = item.learning_early_commit_bonus or 0
-                                    if not direct_edge then
-                                        learned, potential, learning_early_bonus = learning.reward(
-                                            learning_index, learning_mode, raw, text, consumed_end, item)
-                                        if learned > 0 or potential > 0 then learning_affected = true end
-                                    end
-                                    add_state(states[consumed_end], {
-                                        score = score + learned - (item.learning_score or 0),
-                                        learning_score = learned,
-                                        learning_potential = potential,
-                                        learning_early_commit_bonus = learning_early_bonus,
-                                        mass_score = (item.mass_score or item.score) +
-                                            score - item.score - supplement_added -
-                                            whole_input_single_character_reward_added,
-                                        text = text,
-                                        prev2 = prev2,
-                                        prev1 = prev1,
-                                        max_rank = math.max(item.max_rank or 1, candidate.r),
-                                        source_mask = direct_edge and learning.source_direct or learning.source_composed,
-                                        direct_rank = direct_edge and candidate.r or math.huge,
-                                        supplement_state = supplement_state,
-                                        supplement_score = (item.supplement_score or 0.0) +
-                                            supplement_added,
-                                        code_score = (item.code_score or 0.0) +
-                                            code_reward_added,
-                                        previous = item,
-                                        edge_chars = chars,
-                                        edge_primary_single =
-                                            protect_primary_rare and #chars == 1 and
-                                            (candidate.primary_single or selected_rank > 0),
-                                        edge_code_length = protect_primary_rare and code_length or nil,
-                                        text_length = #text,
-                                        text_char_count = (utf8 and utf8.len and item.text_char_count) and
-                                            item.text_char_count + #chars or nil,
-                                        raw_length = consumed_end,
-                                        edge_count = (item.edge_count or 0) + 1
-                                    })
                                 end
                             end
                         end
@@ -1860,7 +1927,9 @@ local candidate_display_meta = {
 }
 
 local function evaluate_state(item)
-    local eos_score = logp(item.prev2, item.prev1, EOS)
+    local eos_score = ranking_prior.search_logp(
+        item.lm1, item.lm2, item.lm3, item.lm4, item.lm_count,
+        item.prev2, item.prev1, EOS)
     local ending_adjustment = eos_score - path_isolation_penalty(item) +
         (item.code_score or 0.0)
     -- Code-conditioned rare-character relief is a ranking heuristic, just
@@ -1894,7 +1963,9 @@ end
 -- Partial tails are probability evidence, not menu candidates. Preserve the
 -- exact confidence operation order, but do not compute unused ranking priors.
 local function evaluate_evidence_state(item)
-    local confidence_ending_adjustment = logp(item.prev2, item.prev1, EOS) - isolation_penalty(item.text)
+    local confidence_ending_adjustment = ranking_prior.search_logp(
+        item.lm1, item.lm2, item.lm3, item.lm4, item.lm_count,
+        item.prev2, item.prev1, EOS) - isolation_penalty(item.text)
     local base_confidence = (item.mass_score or item.score) + confidence_ending_adjustment
     local personalization = math.min(ranking_prior.personalized_early_commit_cap,
         ranking_prior.supplement_early_commit_contribution(item.supplement_score or 0) +
@@ -2311,7 +2382,9 @@ local function paths_equal(left, right)
     while left and right do
         if left.raw_length ~= right.raw_length or left.text_length ~= right.text_length or
             left.text ~= right.text or left.prev2 ~= right.prev2 or left.prev1 ~= right.prev1 or
-            left.score ~= right.score or
+            left.lm1 ~= right.lm1 or left.lm2 ~= right.lm2 or
+            left.lm3 ~= right.lm3 or left.lm4 ~= right.lm4 or
+            left.lm_count ~= right.lm_count or left.score ~= right.score or
             (left.mass_score or left.score) ~= (right.mass_score or right.score) or
             (left.learning_score or 0) ~= (right.learning_score or 0) or
             (left.learning_potential or 0) ~= (right.learning_potential or 0) or
@@ -2423,6 +2496,7 @@ local function decode_full(raw_code, include_early_commit, required_text_prefix)
     learning_affected = false
     local states = new_states(length)
     expand_range(raw, states, 0, length)
+    if correction.enabled then correction.full_states = states end
     local result = emit(
         raw,
         states,
@@ -2475,15 +2549,20 @@ local function decode(raw_code, include_early_commit, required_text_prefix, lock
             states = new_states(#raw)
             -- Reconstruct confirmed boundaries and score their text as context,
             -- without re-searching or allowing an edge to cross the lock.
-            local seed = { text = "", prev2 = BOS, prev1 = BOS, score = 0, mass_score = 0,
+            local lm1, lm2, lm3, lm4, lm_count = ranking_prior.begin_search_history()
+            local seed = { text = "", prev2 = BOS, prev1 = BOS,
+                lm1 = lm1, lm2 = lm2, lm3 = lm3, lm4 = lm4, lm_count = lm_count,
+                score = 0, mass_score = 0,
                 max_rank = 1, supplement_state = 1, supplement_score = 0,
                 code_score = 0,
                 raw_length = 0, text_length = 0, text_char_count = 0, edge_count = 0 }
+            local corrected_prefix = locked.boundaries:match("|([a-z;'0-9]+)$")
+            local lookup_raw = corrected_prefix and (corrected_prefix .. raw:sub(#prefix + 1)) or raw
             for raw_boundary, text_boundary in locked.boundaries:gmatch("(%d+),(%d+);") do
                 local r, t = tonumber(raw_boundary), tonumber(text_boundary)
                 local edge_text = locked.text:sub(seed.text_length + 1, t)
                 local candidate, selected_rank, code_length = ranking_prior.resolve_locked_edge(
-                    raw, seed.raw_length, r, edge_text)
+                    lookup_raw, seed.raw_length, r, edge_text)
                 -- Text-only Backspace can shorten an already confirmed
                 -- multi-character edge while deliberately retaining its raw
                 -- boundary (for example 团圆/cd -> 团/cd).  Such an opaque
@@ -2496,10 +2575,15 @@ local function decode(raw_code, include_early_commit, required_text_prefix, lock
                 local protect_primary_rare =
                     ranking_prior.canonical_isolation_factor < 1.0
                 local item = { text = locked.text:sub(1, t), previous = seed, edge_chars = chars,
+                    correction_history = corrected_prefix ~= nil,
+                    corrected_code = corrected_prefix and lookup_raw:sub(seed.raw_length + 1, r) or nil,
                     raw_length = r, text_length = t, edge_count = seed.edge_count + 1,
                     text_char_count = (utf8 and utf8.len and seed.text_char_count) and
                         seed.text_char_count + #chars or nil,
-                    prev2 = seed.prev2, prev1 = seed.prev1, score = seed.score,
+                    prev2 = seed.prev2, prev1 = seed.prev1,
+                    lm1 = seed.lm1, lm2 = seed.lm2, lm3 = seed.lm3,
+                    lm4 = seed.lm4, lm_count = seed.lm_count,
+                    score = seed.score,
                     supplement_state = seed.supplement_state,
                     supplement_score = seed.supplement_score,
                     code_score = seed.code_score or 0,
@@ -2510,7 +2594,11 @@ local function decode(raw_code, include_early_commit, required_text_prefix, lock
                         (candidate.primary_single or selected_rank > 0),
                     edge_code_length = candidate and protect_primary_rare and code_length or nil }
                 for _, ch in ipairs(chars) do
-                    item.score = item.score + logp(item.prev2, item.prev1, ch) + emitted_character_reward
+                    local probability
+                    probability, item.lm1, item.lm2, item.lm3, item.lm4, item.lm_count =
+                        ranking_prior.search_logp(item.lm1, item.lm2, item.lm3, item.lm4, item.lm_count,
+                            item.prev2, item.prev1, ch)
+                    item.score = item.score + probability + emitted_character_reward
                     if has_supplements then
                         local reward
                         item.supplement_state, reward = supplement.advance(supplement_matcher, item.supplement_state, ch)
@@ -2531,6 +2619,7 @@ local function decode(raw_code, include_early_commit, required_text_prefix, lock
                     (seed.learning_score or 0)
                 local learned, potential, learning_early_bonus = learning.reward(
                     learning_index, learning_mode, raw, item.text, r, seed)
+                if corrected_prefix then learned, potential, learning_early_bonus = 0, 0, 0 end
                 item.learning_score, item.learning_potential = learned, potential
                 item.learning_early_commit_bonus = learning_early_bonus
                 item.score = item.score + learned - (seed.learning_score or 0)
@@ -2640,6 +2729,189 @@ local function decode(raw_code, include_early_commit, required_text_prefix, lock
     decode_cache.allow_duplicate = active_allow_duplicate_single
     record_decode(started)
     return result
+end
+
+function correction.rank_candidates(candidates, penalty)
+    local ranked = {}
+    for i, source in ipairs(candidates) do
+        local item = {}
+        for k, v in pairs(source) do item[k] = v end
+        item.score = item.correction_base_score - penalty * item.correction_count
+        setmetatable(item, candidate_display_meta)
+        ranked[i] = item
+    end
+    table.sort(ranked, state_better_score_first)
+    if ranking_prior.lexical_model and ranking_prior.lexical_prior_weight > 0 then
+        local lookups = {}
+        for i = 1, math.min(#ranked, ranking_prior.lexical_candidate_limit) do
+            local item = ranked[i]
+            item.lexical_score = ranking_prior.lexical.score(ranking_prior.lexical_model, item.text, lookups) *
+                ranking_prior.lexical_prior_weight
+            item.score = item.score + item.lexical_score
+        end
+    end
+    return ranked
+end
+
+-- The lattice is independent of the required display prefix. Keep only the
+-- latest filtered/reranked view, and memoize terminal evaluations in this one
+-- generation. Prefix refreshes share its EOS quota; they never start a search.
+function correction.publish(cache, exact, locked, required)
+    required = required or ""
+    if cache.required ~= required or not cache.candidates then
+        local candidates = {}
+        for _, path in ipairs(cache.terminal) do
+            local tail = path.text:sub(#(locked and locked.text or "") + 1)
+            if correction.has_two_han(tail) and path.text:sub(1, #required) == required then
+                local item = cache.evaluated[path]
+                if item == nil then
+                    item = false
+                    if correction.reserve(path.correction_count, 1, cache.work) then
+                        item = evaluate_state(path)
+                        item.correction_count = path.correction_count
+                        item.correction_base_score = item.score + correction.search_penalty * path.correction_count
+                        item.corrected_raw = correction.corrected_raw(cache.raw, path)
+                        item._raw = cache.raw
+                        setmetatable(item, candidate_display_meta)
+                    end
+                    cache.evaluated[path] = item
+                end
+                if item then candidates[#candidates + 1] = item end
+            end
+        end
+        cache.required, cache.unranked = required, candidates
+        cache.candidates = correction.rank_candidates(candidates, correction.penalty)
+    end
+    cache.exact, cache.incomplete = exact, cache.work.exhausted
+    if correction.diagnostics_enabled and cache.incomplete and not cache.exhaustion_counted then
+        correction.stats.exhaustions = correction.stats.exhaustions + 1
+        cache.exhaustion_counted = true
+    end
+    correction.last_work = {one=cache.work.used[1], two=cache.work.used[2],
+        limit=cache.work.limit, incomplete=cache.incomplete, from=cache.from,
+        reused_through=cache.reused_through, complete_through=cache.complete_through}
+    return correction.result(exact, cache.candidates, candidate_limit, cache.incomplete, function(result)
+        local changed
+        result, changed = learning.apply_exact_correction_ordering(
+            learning_index, learning_mode, cache.raw, result, correction.affected)
+        if changed then
+            result.learning_affected, result.exact_correction_affected = true, true
+            -- The display preference is not fresh model evidence for auto-commit.
+            result.early_commit_evidence = {}
+        end
+        return result
+    end)
+end
+
+function correction.finish(raw, exact, exact_states, locked, required, full)
+    local floor = locked and #locked.raw or 0
+    local suffix = raw:sub(floor + 1)
+    local _, letters = suffix:gsub("[a-z]", "")
+    if not correction.enabled or letters < 4 or not exact_states or not ensure_kn() then return exact end
+    local identity = (locked and (locked.raw .. "\t" .. locked.text .. "\t" .. locked.boundaries) or "") ..
+        "\tv3:" .. correction.profile .. ":" .. correction.penalty .. ":" .. correction.margin ..
+        ":" .. correction.search_penalty .. ":" .. correction.epoch .. ":" .. model_generation
+    local cache = full and {} or correction.cache
+    local states, from = nil, floor
+    if cache.identity == identity and cache.raw == raw then
+        if correction.diagnostics_enabled then correction.stats.cache_hits=correction.stats.cache_hits+1 end
+        return correction.publish(cache, exact, locked, required)
+    end
+    local minimum_end=-1
+    local reused_through
+    if cache.identity == identity and cache.raw and #cache.raw > lexicon_state.max_code_len and
+        #raw > lexicon_state.max_code_len and cache.raw:sub(1, floor) == raw:sub(1, floor) then
+        if cache.incomplete then
+            -- Never reuse a truncated bucket. All incoming edges at/before
+            -- the first denied source position were completed. Keep only that
+            -- prefix and replay every edge crossing its boundary. Selectors
+            -- remain on the conservative rebuild path.
+            if raw:match("^[a-z]+$") and cache.raw:match("^[a-z]+$") then
+                local common = floor
+                while common < math.min(#raw, #cache.raw) and
+                    raw:byte(common + 1) == cache.raw:byte(common + 1) do common = common + 1 end
+                local safe = common
+                if common < math.min(#raw, #cache.raw) then
+                    safe = math.max(floor, common - lexicon_state.max_code_len)
+                end
+                safe = math.min(safe, cache.complete_through or floor)
+                if safe > floor then
+                    states = {}
+                    for i=0,#raw do states[i]=i<=safe and cache.states[i] or new_bucket() end
+                    minimum_end, reused_through = safe, safe
+                    from = math.max(floor, safe + 1 - lexicon_state.max_code_len)
+                    if correction.diagnostics_enabled then
+                        correction.stats.prefix_reuses = correction.stats.prefix_reuses + 1
+                    end
+                end
+            end
+        elseif #raw > #cache.raw and raw:sub(1, #cache.raw) == cache.raw then
+            states = cache.states
+            from = math.max(floor, #cache.raw + 1 - lexicon_state.max_code_len - trailing_selector_span(raw))
+            for i = #cache.raw + 1, #raw do states[i] = new_bucket() end
+            minimum_end=#cache.raw
+        elseif #raw < #cache.raw and cache.raw:sub(1, #raw) == raw then
+            states = cache.states
+            for i = #raw + 1, #cache.raw do states[i] = nil end
+            from = #raw
+        elseif not raw:find("[;'0-9]") and not cache.raw:find("[;'0-9]") then
+            -- A letter-only edit can reuse the unchanged prefix. Rewind a full
+            -- code before the edit and replay every edge crossing that boundary.
+            local common=floor
+            while common<math.min(#raw,#cache.raw) and
+                raw:byte(common+1)==cache.raw:byte(common+1) do common=common+1 end
+            local safe=math.max(floor,common-lexicon_state.max_code_len)
+            states={}
+            for i=0,#raw do states[i]=i<=safe and cache.states[i] or new_bucket() end
+            minimum_end=safe
+            from=math.max(floor,safe+1-lexicon_state.max_code_len)
+        end
+    end
+    if not states then
+        states = {}
+        for i = 0, #raw do states[i] = new_bucket() end
+    end
+    local work=correction.begin(exact_states)
+    local started=correction.diagnostics_enabled and os.clock()
+    local ok, failure = pcall(expand_range, raw, states, from, #raw, minimum_end)
+    correction.searching = nil
+    work.position = nil
+    if not ok then correction.cache = {}; error(failure, 0) end
+    cache = {raw=raw, identity=identity, states=states, work=work,
+        terminal=correction.current(states[#raw], nil, #raw), evaluated={},
+        from=from, reused_through=reused_through,
+        complete_through=math.max(minimum_end, work.first_incomplete_position or #raw)}
+    local result = correction.publish(cache, exact, locked, required)
+    if correction.diagnostics_enabled then
+        correction.stats.seconds=correction.stats.seconds+os.clock()-started
+    end
+    if not full then correction.cache = cache end
+    return result
+end
+
+do
+    local exact_decode, exact_full = decode, decode_full
+    decode = function(raw, early, required, locked)
+        if correction.enabled then
+            local previous = (locked and locked_decode_cache or decode_cache).raw
+            local normalized = normalize(raw)
+            -- A cold lattice with a rank suffix has no terminal bucket before
+            -- that suffix. Dropping it must reconstruct the newly exposed edge.
+            if previous and #normalized < #previous and previous:sub(1,#normalized) == normalized and
+                (trailing_selector_span(previous) > 0 or trailing_selector_span(normalized) > 0) then
+                reset_decode_cache()
+            end
+        end
+        local result = exact_decode(raw, early, required, locked)
+        if not correction.enabled then return result end
+        return correction.finish(normalize(raw), result,
+            locked and locked_decode_cache.states or decode_cache.states, locked, required, false)
+    end
+    decode_full = function(raw, early, required)
+        local result = exact_full(raw, early, required)
+        if not correction.enabled then return result end
+        return correction.finish(normalize(raw), result, correction.full_states, nil, required, true)
+    end
 end
 
 -- A model read can fail after push_input has already changed the composition.
@@ -2898,7 +3170,7 @@ end
 -- untruncated confidence share reaches the strong threshold.
 local function capture_empty_code_candidate(full_before, committed_text, locked)
     local decoded = decode(full_before, false, committed_text, locked)
-    if #decoded == 0 or decoded.learning_affected then
+    if #decoded == 0 or decoded.learning_affected or decoded.correction_incomplete or (decoded[1].correction_count or 0) > 0 then
         return nil
     end
     local visible_top = decoded[1]
@@ -2968,6 +3240,9 @@ local function cycle_candidate_highlight(context, step)
 end
 
 reset_decode_cache = function()
+    correction.epoch=correction.epoch+1
+    correction.cache = {}
+    correction.full_states = nil
     locked_decode_cache = {}
     learning_affected = false
     decode_cache.raw = nil
@@ -2979,7 +3254,30 @@ reset_decode_cache = function()
     decode_cache.allow_duplicate = active_allow_duplicate_single
 end
 
+function correction.set_enabled(enabled)
+    enabled = enabled == true
+    if enabled ~= correction.enabled then correction.enabled = enabled; reset_decode_cache() end
+end
+
+function correction.set_level(level)
+    assert(level == "off" or correction.level_penalties[level], "unknown correction level")
+    local enabled = level ~= "off"
+    local penalty = correction.level_penalties[level] or correction.level_penalties.medium
+    correction.level = level
+    if correction.enabled ~= enabled or correction.penalty ~= penalty then
+        correction.enabled, correction.penalty = enabled, penalty
+        reset_decode_cache()
+    end
+end
+
+function correction.sync(context)
+    if context and type(context.get_option) == "function" then
+        correction.set_level(correction.context_level(context))
+    end
+end
+
 local function set_allow_duplicate_single(context)
+    correction.sync(context)
     local allowed = true
     if context and type(context.get_option) == "function" then
         local ok, value = pcall(context.get_option, context, allow_duplicate_single_option)
@@ -3135,9 +3433,11 @@ end
 
 local function try_empty_code_commit(env, state, full_before, appended_letter)
     local context = env.engine.context
-    -- Empty-code auto commit is part of 整句自动提前上屏; there is no
-    -- separate switch, so the early-commit option gates it as well.
-    if not context:get_option("tiger_sentence_early_commit") or state.suspended then
+    -- With key correction enabled, an exact-code dead end may be a typo.
+    -- Never commit it or even evaluate the empty-code proposal: a later key
+    -- can still expose the intended correction. Probabilistic early commit
+    -- and explicit selections have separate, unchanged paths.
+    if correction.enabled or not context:get_option("tiger_sentence_early_commit") or state.suspended then
         state.empty_code_pending = nil
         save_transient_state(context, state, env)
         return false
@@ -3314,7 +3614,33 @@ local function try_early_commit(env)
     end
 
     local generation = model_generation
+    if correction.enabled then
+        -- A corrected top or exhausted search cannot authorize early commit.
+        -- Inspect this generation's ordinary result before building evidence
+        -- that would immediately be discarded. The following evidence upgrade
+        -- reuses its exact lattice and correction quota; it does not re-search.
+        local current = decode(full_raw, false, state.committed_text, active_lock(state))
+        if current.correction_incomplete or current.exact_correction_affected or
+            (current[1] and (current[1].correction_count or 0) > 0) then
+            reset_early_evidence(state)
+            state.empty_code_pending = nil
+            save_transient_state(context, state, env)
+            return
+        end
+        if generation ~= model_generation then
+            synchronize_model_state(state)
+            save_transient_state(context, state, env)
+            return
+        end
+    end
     local decoded = decode(full_raw, true, state.committed_text, active_lock(state))
+    if decoded.correction_incomplete or decoded.exact_correction_affected or
+        (decoded[1] and (decoded[1].correction_count or 0) > 0) then
+        reset_early_evidence(state)
+        state.empty_code_pending = nil
+        save_transient_state(context, state, env)
+        return
+    end
     if generation ~= model_generation then
         synchronize_model_state(state)
         save_transient_state(context, state, env)
@@ -3467,28 +3793,56 @@ end
 local function learning_stage(env, state, selected, raw, submitted_first)
     local live = env._tiger_learning
     if not live or live.mode == "" or not selected then return end
+    if correction.affected(selected) then live.pending, live.baseline = {}, nil; return end
 
-    -- Cross-source learning is pairwise and never mutates either source's
-    -- internal ordering. Selecting a lower Direct candidate over an earlier
-    -- Composed candidate records only Direct > Composed (and vice versa).
+    -- Keep final exact/corrected preferences separate from Direct/Composed
+    -- fusion. Only candidates visibly ahead of this explicit choice compete;
+    -- both mechanisms preserve the internal order of their source chains.
     for _, ahead in ipairs(selected._fusion_ahead or {}) do
         local event
-        if learning.candidate_is_direct(selected) and learning.candidate_is_composed_only(ahead) then
+        if correction.affected(ahead) then
+            event = learning.exact_correction_event(live.mode, raw, selected.text, ahead.text,
+                selected.path and selected.path.raw_length or #raw)
+        elseif learning.candidate_is_direct(selected) and
+            learning.candidate_is_composed_only(ahead) then
             event = learning.fusion_event(live.mode, raw, selected.text, ahead.text, true,
                 selected.path and selected.path.raw_length or #raw)
-        elseif learning.candidate_is_composed_only(selected) and learning.candidate_is_direct(ahead) then
+        elseif not correction.affected(ahead) and learning.candidate_is_composed_only(selected) and
+            learning.candidate_is_direct(ahead) then
             event = learning.fusion_event(live.mode, raw, ahead.text, selected.text, false,
                 selected.path and selected.path.raw_length or #raw)
         end
-        if event and #live.pending < 256 then live.pending[#live.pending + 1] = event end
+        if event and #live.pending < 256 then
+            -- A processor key can stage the same choice again in the commit
+            -- notifier. Deduplicate only this pending submission; other pairs
+            -- and later confirmed corrections remain independent evidence.
+            local duplicate = false
+            for _, pending in ipairs(live.pending) do
+                if pending.mode == event.mode and pending.code == event.code and
+                    pending.text == event.text and pending.raw_end == event.raw_end then
+                    duplicate = true; break
+                end
+            end
+            if not duplicate then live.pending[#live.pending + 1] = event end
+        end
     end
 
     local baseline = state.tab_pending and live.baseline or
         (not state.tab_pending and submitted_first)
-    if baseline and learning.candidate_is_composed_only(baseline) and learning.candidate_is_composed_only(selected) then
+    -- A corrected baseline blocks fragment learning, not valid exact fusion pairs.
+    if baseline and not correction.affected(baseline) and learning.candidate_is_composed_only(baseline) and
+        learning.candidate_is_composed_only(selected) then
         local lock = active_lock(state)
         local floor = math.max(#state.committed_raw, lock and #lock.raw or 0)
         local events = learning.diff(raw, baseline, selected, floor, live.mode)
+        local reinforced = learning.reinforce_existing(live.store and live.store.index, raw, baseline, selected, floor, live.mode)
+        for _, e in ipairs(reinforced) do
+            local duplicate = false
+            for _, old in ipairs(events) do
+                if old.mode == e.mode and old.code == e.code and old.text == e.text then duplicate = true; break end
+            end
+            if not duplicate then events[#events + 1] = e end
+        end
         for _, e in ipairs(events) do if #live.pending < 256 then live.pending[#live.pending + 1] = e end end
     end
     live.baseline = nil
@@ -3497,12 +3851,14 @@ end
 learning_submit = function(env, selected, actual, expected)
     local live = env._tiger_learning
     if not live then return end
+    if correction.affected(selected) then live.pending, live.baseline = {}, nil; return end
     local events, remaining = {}, {}
     if selected and actual ~= "" and actual == expected and live.mode ~= "" then
         local fusion_mode = learning.fusion_mode(live.mode)
+        local exact_correction_mode = learning.exact_correction_mode(live.mode)
         for _, e in ipairs(live.pending) do
             if e.raw_end > selected.path.raw_length then remaining[#remaining + 1] = e
-            elseif e.mode == fusion_mode then events[#events + 1] = e
+            elseif e.mode == fusion_mode or e.mode == exact_correction_mode then events[#events + 1] = e
             elseif e.mode == live.mode and e.text_start >= #selected.text - #expected and
                 selected.text:sub(e.text_start + 1, e.text_end) == e.text then events[#events + 1] = e end
         end
@@ -3584,6 +3940,17 @@ local function prepare_learning(env, attach)
         end
         if attach and context.option_update_notifier then
             live.option_connection = context.option_update_notifier:connect(function(ctx, name)
+                if name == correction.option then
+                    correction.sync(ctx)
+                    local state = sentence_state(ctx, env)
+                    reset_early_evidence(state)
+                    state.empty_code_pending, state.tab_pending = nil, false
+                    live.pending, live.baseline = {}, nil
+                    save_transient_state(ctx, state, env)
+                    if type(ctx.refresh_non_confirmed_composition) == "function" then
+                        ctx:refresh_non_confirmed_composition()
+                    end
+                end
                 if name == "ascii_mode" and ctx:get_option(name) and buffered_text(ctx) ~= "" then
                     ctx:confirm_current_selection()
                 end
@@ -3711,7 +4078,9 @@ local function processor(key_event, env)
                     node = node.previous
                 end
                 state.locks[#state.locks + 1] = { raw = full_before:sub(1, selected.path.raw_length),
-                    text = selected.text, boundaries = table.concat(boundaries) }
+                    text = selected.text, boundaries = table.concat(boundaries) ..
+                        (correction.affected(selected) and ("|" .. correction.corrected_raw(
+                            full_before:sub(1, selected.path.raw_length), selected.path)) or "") }
                 local commit
                 if context:get_option("tiger_sentence_early_commit") then
                     commit = selected.text:sub(#state.committed_text + 1)
@@ -3798,8 +4167,11 @@ local function processor(key_event, env)
                 if state.buffered_text == "" then
                     reset_sentence_state(context, env)
                 else
+                    local lock = active_lock(state)
+                    local corrected = lock and lock.boundaries:match("|([a-z;'0-9]+)$")
                     state.locks = {{raw=state.committed_raw, text=state.committed_text,
-                        boundaries=tostring(#state.committed_raw)..","..tostring(#state.committed_text)..";"}}
+                        boundaries=tostring(#state.committed_raw)..","..tostring(#state.committed_text)..";" ..
+                            (corrected and ("|" .. corrected) or "")}}
                     save_sentence_state(context, state, env)
                 end
                 reset_decode_cache()
@@ -3952,7 +4324,7 @@ local function translator(input, seg, env)
             end
             if text ~= "" or buffered ~= "" then
                 local cand = Candidate(buffered ~= "" and "sentence_buffered" or "sentence",
-                    seg.start, seg._end, text, "")
+                    seg.start, seg._end, text, (item.correction_count or 0) > 0 and "🐞" or "")
                 if buffered ~= "" then cand.quality = 1000 end
                 cand.preedit = buffered .. (buffered ~= "" and preedit ~= "" and " " or "") .. preedit
                 yield(cand)
@@ -3970,6 +4342,7 @@ local function translator(input, seg, env)
 end
 
 local M = {}
+M.correction = correction
 M.decode = decode
 M.decode_full = decode_full
 M.ensure_lexicon = ensure_lexicon
@@ -4193,14 +4566,22 @@ M.processor_component = {
 -- separate small Rime Config so API/mobile toggles persist too (switcher's
 -- save_options only saves switcher commands). Never rewrite user.yaml or the
 -- user's default.custom.yaml. Disk I/O occurs on load/toggle, never each key.
-M.options = {}
-do
+M.options = {};
+(function()
     local defaults = {
         tiger_sentence_early_commit = true,
         tiger_sentence_allow_duplicate_single = true,
-        tiger_sentence_early_commit_to_preedit = false
+        tiger_sentence_early_commit_to_preedit = false,
+        tiger_sentence_key_correction = false
     }
     local stores = {}
+    local level_path = "options/tiger_sentence_correction_level"
+    local function valid_level(level)
+        return level == "off" or correction.level_penalties[level] ~= nil
+    end
+    local function read_string(config, key)
+        if type(config.get_string) == "function" then return config:get_string(key) end
+    end
     local function open_store()
         if type(Config) ~= "function" or not rime_api or
             type(rime_api.get_user_data_dir) ~= "function" then return nil end
@@ -4218,8 +4599,44 @@ do
             if value == nil then value = legacy:get_bool("var/option/" .. name) end
             store.values[name] = value
         end
+        local level = read_string(config, level_path)
+        if not valid_level(level) then
+            local count = 0
+            for option, choice in pairs(correction.level_options) do
+                if legacy:get_bool("var/option/" .. option) then level=choice; count=count+1 end
+            end
+            if count ~= 1 then level=nil end
+        end
+        if not valid_level(level) then
+            local old = store.values[correction.option]
+            level = old ~= nil and (old and "medium" or "off") or nil
+        end
+        store.level = level
+        if level then store.values[correction.option] = level ~= "off" end
         stores[path] = store
         return store
+    end
+    local function apply_level(context, level)
+        -- Set the selected member first. Rime may synchronously translate
+        -- between notifications, so keep an enabled state throughout changes.
+        local selected = correction.option_for_level(level)
+        if not context:get_option(selected) then context:set_option(selected, true) end
+        for option in pairs(correction.level_options) do
+            if option ~= selected and context:get_option(option) then context:set_option(option, false) end
+        end
+        local enabled = level ~= "off"
+        if context:get_option(correction.option) ~= enabled then context:set_option(correction.option, enabled) end
+        correction.set_level(level)
+        set_property_if_changed(context, "tiger_sentence_correction_level", level)
+    end
+    local function save_store(store, context)
+        local saved, accepted = pcall(function()
+            for option, choice in pairs(store.values) do store.config:set_bool("options/" .. option, choice) end
+            if store.level then store.config:set_string(level_path, store.level) end
+            return store.config:save_to_file(store.path)
+        end)
+        set_property_if_changed(context, "tiger_sentence_options_error",
+            saved and accepted and "" or "Unable to save tiger_sentence.options.yaml")
     end
     function M.options.sync(env)
         local live = env._tiger_options
@@ -4227,10 +4644,13 @@ do
         live.syncing = true
         local context = env.engine.context
         for name, fallback in pairs(live.defaults) do
-            local value = live.store.values[name]
-            if value == nil then value = fallback end
-            if context:get_option(name) ~= value then context:set_option(name, value) end
+            if name ~= correction.option then
+                local value = live.store.values[name]
+                if value == nil then value = fallback end
+                if context:get_option(name) ~= value then context:set_option(name, value) end
+            end
         end
+        apply_level(context, live.store.level or live.default_level)
         live.revision = live.store.revision
         live.syncing = false
     end
@@ -4246,21 +4666,37 @@ do
             if value == nil then value = fallback end
             live.defaults[name] = value
         end
+        local level = read_string(env.engine.schema.config, "tiger_sentence/option_defaults/tiger_sentence_correction_level")
+        live.default_level = valid_level(level) and level or (live.defaults[correction.option] and "medium" or "off")
         M.options.sync(env)
         live.connection = context.option_update_notifier:connect(function(ctx, name)
-            if live.syncing or defaults[name] == nil then return end
-            local value = ctx:get_option(name)
-            if store.values[name] == value then return end
-            store.values[name] = value
+            if live.syncing then return end
+            local choice = correction.level_options[name]
+            if choice then
+                -- Radio groups may deselect before selecting. Persist only
+                -- the positive selection, never an intermediate empty group.
+                if not ctx:get_option(name) then return end
+            elseif name == correction.option then
+                -- Keep old frontend toggle buttons working as off/medium.
+                choice = ctx:get_option(name) and "medium" or "off"
+            elseif defaults[name] == nil then return end
+            if choice then
+                local changed = store.level ~= choice or store.values[correction.option] ~= (choice ~= "off")
+                live.syncing = true
+                apply_level(ctx, choice)
+                live.syncing = false
+                if not changed then return end
+                store.level = choice
+                store.values[correction.option] = choice ~= "off"
+            else
+                local value = ctx:get_option(name)
+                if store.values[name] == value then return end
+                store.values[name] = value
+            end
             store.revision = store.revision + 1
-            -- Leave this session's revision stale: other options may have
-            -- changed in another application since this one was last used.
-            local saved, accepted = pcall(function()
-                for option, choice in pairs(store.values) do store.config:set_bool("options/" .. option, choice) end
-                return store.config:save_to_file(store.path)
-            end)
-            set_property_if_changed(ctx, "tiger_sentence_options_error",
-                saved and accepted and "" or "Unable to save tiger_sentence.options.yaml")
+            -- Keep this session stale so later synchronization merges changes
+            -- from other applications without overwriting unrelated choices.
+            save_store(store, ctx)
         end)
     end
     function M.options.fini(env)
@@ -4268,7 +4704,7 @@ do
         if live and live.connection then live.connection:disconnect() end
         env._tiger_options = nil
     end
-end
+end)()
 -- Retain Rime's native modifier timing and bindings. Only while a buffered
 -- composition exists, raw-code/inline-ASCII exits must submit its displayed
 -- candidate instead of the private transport marker. The schema is private;

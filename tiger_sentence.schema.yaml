@@ -2,7 +2,7 @@
 schema:
   schema_id: tiger_sentence
   name: 虎整句
-  version: "1.4"
+  version: "1.5"
   author:
     - TigerClaw
   description: |
@@ -31,12 +31,15 @@ switches:
     states: [ 单字重码组句关, 单字重码组句开 ]
   - name: tiger_sentence_early_commit_to_preedit
     states: [ 提前上屏至应用, 提前上屏至编码 ]
+  - options: [ tiger_sentence_correction_off, tiger_sentence_correction_weak, tiger_sentence_correction_medium, tiger_sentence_correction_strong ]
+    states: [ 按键纠错关, 按键纠错弱, 按键纠错中, 按键纠错强 ]
+    abbrev: [ 关, 弱, 中, 强 ]
 engine:
   processors:
-    - lua_processor@*tiger_sentence*ascii_component
+    - lua_processor@tiger_sentence_ascii
     - recognizer
+    - lua_processor@tiger_sentence_processor
     - key_binder
-    - lua_processor@*tiger_sentence*processor_component
     - speller
     - punctuator
     - selector
@@ -51,9 +54,9 @@ engine:
   translators:
     - punct_translator
     - script_translator@rvlk
-    - lua_translator@*tiger_sentence*translator
+    - lua_translator@tiger_sentence_translator
   filters:
-    - lua_filter@*tiger_sentence*buffer_filter
+    - lua_filter@tiger_sentence_buffer_filter
     - lua_filter@*tiger_yin_comment
     - uniquifier #过滤重复
 
@@ -73,6 +76,10 @@ tiger_sentence:
     tiger_sentence_early_commit: true
     tiger_sentence_allow_duplicate_single: true
     tiger_sentence_early_commit_to_preedit: false
+    # Legacy default retained for compatibility; true maps to medium.
+    tiger_sentence_key_correction: false
+    # Optional first-use override: off / weak / medium / strong.
+    # tiger_sentence_correction_level: medium
   # Learn submitted candidate corrections (direct taps and Tab selections).
   tab_learning: true
   # 提前上屏与空码自动上屏共用的最短保留编码数；0 表示不额外限制。
