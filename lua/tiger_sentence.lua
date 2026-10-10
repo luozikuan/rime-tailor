@@ -226,10 +226,13 @@ local function parse_whitelist_content(content)
 end
 
 local default_high_freq_limit = 1500
+local active_allow_duplicate_single = true
 
 local lexicon_state = {
     built = false,
     high_freq_limit = nil,
+    auto_select_min_code_length = 3,
+    auto_selection_generation = 0,
     codes = {},
     lengths = {},
     max_code_len = 1,
@@ -339,6 +342,10 @@ local function build_lexicon_index(entries, character_ranks, high_freq_limit, wh
                     t = text,
                     r = index,
                     optimal_single = optimal_input[text] == code,
+                    -- Only the configured common, non-whitelisted characters
+                    -- must use their shortest spelling for the whole-input bonus.
+                    whole_single_reward_eligible = optimal_input[text] == code or
+                        not (common and common[text] and whitelist[text] ~= true),
                     -- A sentence cannot use one-key character edges.  Keep a
                     -- second marker for the strongest legal per-character
                     -- spelling (rank-1 preferred, then shortest).  This is
@@ -457,6 +464,29 @@ local function configured_high_freq_limit(env)
     return math.floor(value)
 end
 
+-- This controls implicit selection on composed edges, not menu visibility.
+-- A schema-less decoder borrows the active setting just like high_freq_limit.
+function lexicon_state.apply_auto_select_min_code_length(value)
+    if type(value) ~= "number" or value ~= value then value = 3 end
+    value = math.max(0, math.min(128, math.floor(value)))
+    if value ~= lexicon_state.auto_select_min_code_length then
+        lexicon_state.auto_select_min_code_length = value
+        active_allow_duplicate_single = value > 0
+        lexicon_state.auto_selection_generation = lexicon_state.auto_selection_generation + 1
+        if reset_decode_cache then reset_decode_cache() end
+    end
+    return value
+end
+
+function lexicon_state.configure_auto_select_min_code_length(env)
+    local schema = env and env.engine and env.engine.schema
+    local config = schema and schema.config
+    local ok, value = pcall(function()
+        return config:get_int("tiger_sentence/auto_select_min_code_length")
+    end)
+    return lexicon_state.apply_auto_select_min_code_length(ok and value or nil)
+end
+
 local function ensure_lexicon(env)
     local schema = env and env.engine and env.engine.schema
     -- Decoder/diagnostic calls have no schema: they borrow the active index,
@@ -468,6 +498,8 @@ local function ensure_lexicon(env)
         end
         return lexicon_state
     end
+
+    lexicon_state.configure_auto_select_min_code_length(env)
 
     -- Only an actual schema-bearing entry point resolves configuration.
     -- Missing/unreadable keys use this schema's default, not the previous
@@ -485,6 +517,7 @@ local function data_status()
     return {
         built = lexicon_state.built,
         high_freq_limit = lexicon_state.high_freq_limit,
+        auto_select_min_code_length = lexicon_state.auto_select_min_code_length,
         codes_path = lexicon_state.codes_path,
         codes_entries = lexicon_state.codes_entries,
         codes_count = lexicon_state.codes_count,
@@ -532,8 +565,9 @@ end
 
 function supplement.build(entries, path)
     local nodes = { { transitions = {}, failure = 1, reward = 0.0 } }
-    local count = 0
+    local count, known = 0, {}
     for text, weight in pairs(entries or {}) do
+        if text ~= "" then known[text] = true end
         local reward = reward_for_weight(weight)
         if text ~= "" and reward > 0.0 then
             local state = 1
@@ -553,7 +587,7 @@ function supplement.build(entries, path)
     end
 
     if count == 0 then
-        return empty_matcher(path, nil)
+        local empty = empty_matcher(path, nil); empty.known = known; return empty
     end
 
     local queue = {}
@@ -582,7 +616,7 @@ function supplement.build(entries, path)
             queue[#queue + 1] = child
         end
     end
-    return { nodes = nodes, path = path, count = count, error = nil }
+    return { nodes = nodes, path = path, count = count, error = nil, known = known }
 end
 
 function supplement.load_file(path)
@@ -680,7 +714,7 @@ local ranking_prior = {
     -- Shape and lexical evidence are excluded from confidence mass.  The word
     -- filter also reranks only Top-5, so neither heuristic can manufacture
     -- early-commit confidence or introduce a candidate that the LM missed.
-    canonical_code_reward = 2.0,
+    canonical_code_reward = 0.0,
     lexical_prior_weight = 0.1,
     lexical_candidate_limit = 5,
     -- A full four-key spelling is strong enough to protect an otherwise
@@ -709,9 +743,6 @@ end
 function ranking_prior.early_confidence(candidate)
     return candidate.early_commit_confidence_score or candidate.confidence_score or candidate.score
 end
--- 允许单字重码组句 defaults to on; the Rime switch only turns it off.
-local allow_duplicate_single_option = "tiger_sentence_allow_duplicate_single"
-local active_allow_duplicate_single = true
 local BOS = kn_reader.BOS
 local EOS = kn_reader.EOS
 local kn_model = false
@@ -852,7 +883,8 @@ local function fresh_transient_state()
         suspended = false,
         empty_code_pending = nil,
         continuation_after_auto_commit = false,
-        model_generation = model_generation
+        model_generation = model_generation,
+        auto_selection_generation = lexicon_state.auto_selection_generation
     }
 end
 
@@ -927,8 +959,10 @@ local function active_lock(state)
 end
 
 local function synchronize_model_state(state)
-    if state.model_generation == model_generation then return false end
+    if state.model_generation == model_generation and
+        state.auto_selection_generation == lexicon_state.auto_selection_generation then return false end
     state.model_generation = model_generation
+    state.auto_selection_generation = lexicon_state.auto_selection_generation
     state.trackers = {}
     state.last_seen_raw = ""
     state.empty_code_pending = nil
@@ -1116,7 +1150,9 @@ local function candidate_is_single(candidate)
     return candidate._single
 end
 
-local function eligible_candidates(candidates, selected_rank, whole_input_edge, allow_duplicate_single)
+local function eligible_candidates(candidates, selected_rank, whole_input_edge, allow_duplicate_single, code_length)
+    allow_duplicate_single = allow_duplicate_single and
+        code_length >= lexicon_state.auto_select_min_code_length
     -- Most code lists contain one entry. Reuse that immutable list instead of
     -- storing an identical one-element _duplicate/_rank_N table on every code.
     if #candidates == 1 then
@@ -1366,7 +1402,8 @@ local function has_complete_candidate(raw_code, required_text_prefix, excluded_t
                             local whole_input_edge = position == 0 and consumed_end == #raw
                             if not (#raw > 1 and consumed_end - position < 2) and
                                 #eligible_candidates(candidates, selected_rank,
-                                    whole_input_edge, active_allow_duplicate_single) > 0 then
+                                    whole_input_edge, active_allow_duplicate_single,
+                                    code_end - position) > 0 then
                                 reachable[consumed_end] = true
                             end
                         end
@@ -1404,7 +1441,7 @@ local function has_complete_candidate(raw_code, required_text_prefix, excluded_t
                         if not (#raw > 1 and consumed_end - position < 2) then
                             local selected = eligible_candidates(
                                 candidates, selected_rank, whole_input_edge,
-                                active_allow_duplicate_single)
+                                active_allow_duplicate_single, code_length)
                             for packed in pairs(states[position]) do
                                 local matched_length = math.floor(packed / stride)
                                 for candidate_index = 1, #selected do
@@ -1414,7 +1451,9 @@ local function has_complete_candidate(raw_code, required_text_prefix, excluded_t
                                         matched_length,
                                         candidate.t)
                                     if next_matched and (not first_ranks_only or candidate.r == 1 or
-                                        (active_allow_duplicate_single and candidate_is_single(candidate))) then
+                                        (active_allow_duplicate_single and
+                                         code_length >= lexicon_state.auto_select_min_code_length and
+                                         candidate_is_single(candidate))) then
                                         local next_excluded = packed % stride
                                         if excluded_text and next_excluded <= #excluded_text then
                                             if excluded_text:sub(next_excluded + 1,
@@ -1680,8 +1719,16 @@ local function dedup_limit(bucket, limit)
     local truncated_now = #result > limit
     local truncated = (bucket._truncated or false) or truncated_now
     local better = current_state_comparator()
+    local learned, has_direct = false, false
     for _, item in ipairs(result) do
-        if (item.learning_score or 0) > 0 then better = state_better_score_first; break end
+        learned = learned or (item.learning_score or 0) > 0
+        has_direct = has_direct or learning.candidate_is_direct(item)
+    end
+    if learned then better = state_better_score_first end
+    local preserve_direct = learned and has_direct
+    if preserve_direct then
+        table.sort(result, better)
+        learning.apply_source_ordering("", result)
     end
     if truncated_now then
         local reserved
@@ -1693,7 +1740,11 @@ local function dedup_limit(bucket, limit)
         if reserved then
             table.sort(reserved, function(a, b) return a.score + a.learning_potential > b.score + b.learning_potential end)
         end
-        result = select_exact_top(result, limit, better)
+        if preserve_direct then
+            for i = #result, limit + 1, -1 do result[i] = nil end
+        else
+            result = select_exact_top(result, limit, better)
+        end
         if reserved then
             local kept, added = {}, 0
             for _, item in ipairs(result) do kept[item] = true end
@@ -1702,7 +1753,7 @@ local function dedup_limit(bucket, limit)
                 if not kept[item] then result[#result + 1] = item; added = added + 1 end
             end
         end
-    else
+    elseif not preserve_direct then
         table.sort(result, better)
     end
     -- result is private to this invocation; publishing it directly avoids
@@ -1773,7 +1824,7 @@ local function expand_range(raw, states, from_pos, length, minimum_consumed_end)
                                 not (length > 1 and consumed_end - position < 2) then
                                 local selected_candidates = eligible_candidates(
                                     candidates, selected_rank, whole_input_edge,
-                                    active_allow_duplicate_single)
+                                    active_allow_duplicate_single, code_length)
                                 -- A descendant cannot recover probability mass
                                 -- already discarded at an earlier lattice boundary.
                                 if #selected_candidates > 0 and current._truncated then
@@ -1828,7 +1879,8 @@ local function expand_range(raw, states, from_pos, length, minimum_consumed_end)
                                             end
                                             local whole_input_single_character_reward_added = 0.0
                                             if whole_input_edge and selected_rank == 0 and
-                                                candidate.optimal_single and candidate_is_single(candidate) then
+                                                candidate.whole_single_reward_eligible and
+                                                candidate_is_single(candidate) then
                                                 whole_input_single_character_reward_added =
                                                     whole_input_single_character_reward
                                                 score = score + whole_input_single_character_reward_added
@@ -1838,11 +1890,12 @@ local function expand_range(raw, states, from_pos, length, minimum_consumed_end)
                                             local learned = item.learning_score or 0
                                             local potential = 0
                                             local learning_early_bonus = item.learning_early_commit_bonus or 0
-                                            if not direct_edge and not correction.searching and not item.correction_history then
+                                            if not correction.searching and not item.correction_history then
                                                 learned, potential, learning_early_bonus = learning.reward(
                                                     learning_index, learning_mode, raw, text, consumed_end, item)
                                                 if learned > 0 or potential > 0 then learning_affected = true end
                                             end
+                                            if direct_edge then learning_early_bonus = 0 end
                                             if correction.searching then learned, potential, learning_early_bonus = 0, 0, 0 end
                                             add_state(states[consumed_end], {
                                                 score = score + learned - (item.learning_score or 0) -
@@ -1943,7 +1996,7 @@ local function evaluate_state(item)
         ranking_prior.supplement_early_commit_contribution(item.supplement_score or 0) +
         (direct and 0 or (item.learning_early_commit_bonus or 0)))
     return {
-        score = item.score + ending_adjustment - (direct and (item.learning_score or 0) or 0),
+        score = item.score + ending_adjustment,
         confidence_score = confidence_score,
         early_commit_confidence_score = confidence_score + personalization,
         text = item.text,
@@ -1952,7 +2005,7 @@ local function evaluate_state(item)
         max_rank = math.max(1, item.max_rank or 1),
         supplement_score = item.supplement_score or 0.0,
         code_score = item.code_score or 0.0,
-        learning_score = direct and 0 or (item.learning_score or 0),
+        learning_score = item.learning_score or 0,
         source_mask = item.source_mask or 0,
         direct_rank = item.direct_rank or math.huge,
         edge_count = item.edge_count or 0,
@@ -2210,7 +2263,7 @@ local function prefer_score_over_lexicon_rank(values)
     return false
 end
 
-function learning.apply_fusion_ordering(raw, candidates)
+function learning.apply_source_ordering(raw, candidates)
     if #candidates < 2 then return candidates end
     local has_direct = false
     for i = 1, #candidates do
@@ -2235,39 +2288,24 @@ function learning.apply_fusion_ordering(raw, candidates)
         end
         return candidates
     end
-    -- Private to this merge: no preference can survive a learning/schema epoch.
-    -- Zero is a cached score, not a miss. Avoid constructing/hashing each pair
-    -- repeatedly while its source prefix is promoted.
-    local pair_scores = {}
-    local function pair_score(d, c)
-        if not learning_index or learning_mode == "" then return 0 end
-        local key = (d - 1) * #composed + c
-        local score = pair_scores[key]
-        if score == nil then
-            score = learning.fusion_score(learning_index, learning_mode, raw, direct[d].text, composed[c].text)
-            pair_scores[key] = score
+    -- Ordinary learning changes final scores. Preserve the Direct rank chain:
+    -- the strongest remaining Direct score carries only its necessary prefix.
+    -- Empty/unrelated history retains the previous source-stable baseline.
+    local learned, suffix_max = false, {}
+    for _, item in ipairs(candidates) do
+        if (item.learning_score or 0) > 0 then learned = true; break end
+    end
+    if learned then
+        for i = #direct, 1, -1 do
+            suffix_max[i] = math.max(direct[i].score or -math.huge, suffix_max[i + 1] or -math.huge)
         end
-        return score
     end
     local merged, di, ci = {}, 1, 1
     while di <= #direct and ci <= #composed do
         local d, c = direct[di], composed[ci]
-        local direct_prefix, composed_prefix = 0, 0
-        for i = di, #direct do
-            direct_prefix = math.max(direct_prefix,
-                pair_score(i, ci))
-        end
-        for i = ci, #composed do
-            composed_prefix = math.max(composed_prefix,
-                -pair_score(di, i))
-        end
         local take_direct
-        if direct_prefix > 0 or composed_prefix > 0 then
-            if math.abs(direct_prefix - composed_prefix) > 1e-12 then
-                take_direct = direct_prefix > composed_prefix
-            else
-                take_direct = (base[d.text] or math.huge) < (base[c.text] or math.huge)
-            end
+        if learned and math.abs(suffix_max[di] - (c.score or -math.huge)) > 1e-12 then
+            take_direct = suffix_max[di] > (c.score or -math.huge)
         else
             take_direct = (base[d.text] or math.huge) < (base[c.text] or math.huge)
         end
@@ -2295,10 +2333,21 @@ local function emit(raw, states, length, include_early_commit, required_text_pre
             and state_better_score_first
             or state_better_rank_first
     end
+    local learned, has_direct = false, false
     for _, item in ipairs(all_candidates) do
-        if (item.learning_score or 0) > 0 then better = state_better_score_first; break end
+        learned = learned or (item.learning_score or 0) > 0
+        has_direct = has_direct or learning.candidate_is_direct(item)
     end
-    local result = select_exact_top(all_candidates, candidate_limit, better)
+    if learned then better = state_better_score_first end
+    local result
+    if learned and has_direct then
+        table.sort(all_candidates, better)
+        learning.apply_source_ordering(raw, all_candidates)
+        result = {}
+        for i = 1, math.min(#all_candidates, candidate_limit) do result[i] = all_candidates[i] end
+    else
+        result = select_exact_top(all_candidates, candidate_limit, better)
+    end
     if #result > 1 and ranking_prior.lexical_model and
         ranking_prior.lexical_prior_weight > 0.0 and ensure_kn() then
         -- Rerank only the first five displayed candidates. Character LM
@@ -2314,7 +2363,7 @@ local function emit(raw, states, length, include_early_commit, required_text_pre
         end
         table.sort(result, better)
     end
-    learning.apply_fusion_ordering(raw, result)
+    learning.apply_source_ordering(raw, result)
     result.learning_affected = learning_affected
     result._completed_truncated = completed._truncated or false
     -- Display Top-K is not the probability pool. Retain the scored beam for
@@ -2790,17 +2839,7 @@ function correction.publish(cache, exact, locked, required)
     correction.last_work = {one=cache.work.used[1], two=cache.work.used[2],
         limit=cache.work.limit, incomplete=cache.incomplete, from=cache.from,
         reused_through=cache.reused_through, complete_through=cache.complete_through}
-    return correction.result(exact, cache.candidates, candidate_limit, cache.incomplete, function(result)
-        local changed
-        result, changed = learning.apply_exact_correction_ordering(
-            learning_index, learning_mode, cache.raw, result, correction.affected)
-        if changed then
-            result.learning_affected, result.exact_correction_affected = true, true
-            -- The display preference is not fresh model evidence for auto-commit.
-            result.early_commit_evidence = {}
-        end
-        return result
-    end)
+    return correction.result(exact, cache.candidates, candidate_limit, cache.incomplete)
 end
 
 function correction.finish(raw, exact, exact_states, locked, required, full)
@@ -3179,7 +3218,9 @@ local function capture_empty_code_candidate(full_before, committed_text, locked)
         local previous = candidate.path and candidate.path.previous
         return not restrict or (candidate.max_rank or 1) <= 1 or
             (active_allow_duplicate_single and
-             ((previous and (previous.text or "") ~= "") or utf_length(candidate.text) == 1))
+             ((previous and (previous.text or "") ~= "") or
+              (utf_length(candidate.text) == 1 and
+               #normalize(full_before) >= lexicon_state.auto_select_min_code_length)))
     end
     -- Preserve the displayed choice, but assess its confidence against all
     -- group-eligible beam outputs rather than just the visible twenty.
@@ -3278,18 +3319,9 @@ end
 
 local function set_allow_duplicate_single(context)
     correction.sync(context)
-    local allowed = true
-    if context and type(context.get_option) == "function" then
-        local ok, value = pcall(context.get_option, context, allow_duplicate_single_option)
-        if ok and value == false then
-            allowed = false
-        end
-    end
-    if allowed ~= active_allow_duplicate_single then
-        active_allow_duplicate_single = allowed
-        reset_decode_cache()
-    end
-    return allowed
+    -- The numeric setting is the single source of truth. Keep the derived
+    -- boolean in the historical learning mode identity without a new namespace.
+    return active_allow_duplicate_single
 end
 
 -- Replace the live composition with one atomic input mutation. clear() plus
@@ -3620,7 +3652,7 @@ local function try_early_commit(env)
         -- that would immediately be discarded. The following evidence upgrade
         -- reuses its exact lattice and correction quota; it does not re-search.
         local current = decode(full_raw, false, state.committed_text, active_lock(state))
-        if current.correction_incomplete or current.exact_correction_affected or
+        if current.correction_incomplete or
             (current[1] and (current[1].correction_count or 0) > 0) then
             reset_early_evidence(state)
             state.empty_code_pending = nil
@@ -3634,7 +3666,7 @@ local function try_early_commit(env)
         end
     end
     local decoded = decode(full_raw, true, state.committed_text, active_lock(state))
-    if decoded.correction_incomplete or decoded.exact_correction_affected or
+    if decoded.correction_incomplete or
         (decoded[1] and (decoded[1].correction_count or 0) > 0) then
         reset_early_evidence(state)
         state.empty_code_pending = nil
@@ -3777,8 +3809,8 @@ local function learning_selection(env, state)
             first = first or item
             if visible == target then
                 selected = item
-                selected._fusion_ahead = {}
-                for i = 1, #seen do selected._fusion_ahead[i] = seen[i] end
+                selected._learning_ahead = {}
+                for i = 1, #seen do selected._learning_ahead[i] = seen[i] end
             end
             seen[#seen + 1] = item
             visible = visible + 1
@@ -3795,55 +3827,36 @@ local function learning_stage(env, state, selected, raw, submitted_first)
     if not live or live.mode == "" or not selected then return end
     if correction.affected(selected) then live.pending, live.baseline = {}, nil; return end
 
-    -- Keep final exact/corrected preferences separate from Direct/Composed
-    -- fusion. Only candidates visibly ahead of this explicit choice compete;
-    -- both mechanisms preserve the internal order of their source chains.
-    for _, ahead in ipairs(selected._fusion_ahead or {}) do
-        local event
-        if correction.affected(ahead) then
-            event = learning.exact_correction_event(live.mode, raw, selected.text, ahead.text,
-                selected.path and selected.path.raw_length or #raw)
-        elseif learning.candidate_is_direct(selected) and
-            learning.candidate_is_composed_only(ahead) then
-            event = learning.fusion_event(live.mode, raw, selected.text, ahead.text, true,
-                selected.path and selected.path.raw_length or #raw)
-        elseif not correction.affected(ahead) and learning.candidate_is_composed_only(selected) and
-            learning.candidate_is_direct(ahead) then
-            event = learning.fusion_event(live.mode, raw, ahead.text, selected.text, false,
-                selected.path and selected.path.raw_length or #raw)
-        end
-        if event and #live.pending < 256 then
-            -- A processor key can stage the same choice again in the commit
-            -- notifier. Deduplicate only this pending submission; other pairs
-            -- and later confirmed corrections remain independent evidence.
-            local duplicate = false
-            for _, pending in ipairs(live.pending) do
-                if pending.mode == event.mode and pending.code == event.code and
-                    pending.text == event.text and pending.raw_end == event.raw_end then
-                    duplicate = true; break
-                end
-            end
-            if not duplicate then live.pending[#live.pending + 1] = event end
-        end
-    end
-
     local baseline = state.tab_pending and live.baseline or
         (not state.tab_pending and submitted_first)
-    -- A corrected baseline blocks fragment learning, not valid exact fusion pairs.
-    if baseline and not correction.affected(baseline) and learning.candidate_is_composed_only(baseline) and
-        learning.candidate_is_composed_only(selected) then
+    if baseline and not correction.affected(baseline) and
+        learning.candidate_is_direct(baseline) and learning.candidate_is_direct(selected) then
+        -- Pure Direct choices retain table rank. A visible cross-source rival
+        -- can still compete when another Direct happens to head the menu.
+        baseline = nil
+        for _, ahead in ipairs(selected._learning_ahead or {}) do
+            if correction.affected(ahead) or learning.candidate_is_composed_only(ahead) then
+                if not baseline or (ahead.score or -math.huge) > (baseline.score or -math.huge) then baseline = ahead end
+            end
+        end
+    end
+    if baseline then
         local lock = active_lock(state)
         local floor = math.max(#state.committed_raw, lock and #lock.raw or 0)
-        local events = learning.diff(raw, baseline, selected, floor, live.mode)
-        local reinforced = learning.reinforce_existing(live.store and live.store.index, raw, baseline, selected, floor, live.mode)
-        for _, e in ipairs(reinforced) do
-            local duplicate = false
-            for _, old in ipairs(events) do
-                if old.mode == e.mode and old.code == e.code and old.text == e.text then duplicate = true; break end
+        local events = learning.selection_events(raw, baseline, selected, floor, live.mode,
+            live.store and live.store.index,
+            function(text) return (supplement_matcher.known or {})[text] == true end)
+        learning.plan_levels(live.store and live.store.index, events, raw, baseline, selected, correction.affected(baseline))
+        for _, e in ipairs(events) do
+            if #live.pending < 256 then
+                local duplicate = false
+                for _, old in ipairs(live.pending) do
+                    if old.mode == e.mode and old.code == e.code and old.text == e.text and old.context == e.context and
+                        old.raw_start == e.raw_start and old.raw_end == e.raw_end then duplicate = true; break end
+                end
+                if not duplicate then live.pending[#live.pending + 1] = e end
             end
-            if not duplicate then events[#events + 1] = e end
         end
-        for _, e in ipairs(events) do if #live.pending < 256 then live.pending[#live.pending + 1] = e end end
     end
     live.baseline = nil
 end
@@ -3854,11 +3867,8 @@ learning_submit = function(env, selected, actual, expected)
     if correction.affected(selected) then live.pending, live.baseline = {}, nil; return end
     local events, remaining = {}, {}
     if selected and actual ~= "" and actual == expected and live.mode ~= "" then
-        local fusion_mode = learning.fusion_mode(live.mode)
-        local exact_correction_mode = learning.exact_correction_mode(live.mode)
         for _, e in ipairs(live.pending) do
             if e.raw_end > selected.path.raw_length then remaining[#remaining + 1] = e
-            elseif e.mode == fusion_mode or e.mode == exact_correction_mode then events[#events + 1] = e
             elseif e.mode == live.mode and e.text_start >= #selected.text - #expected and
                 selected.text:sub(e.text_start + 1, e.text_end) == e.text then events[#events + 1] = e end
         end
@@ -3875,12 +3885,12 @@ local function prepare_learning(env, attach)
         local ok, value = pcall(function() return schema.config:get_bool("tiger_sentence/tab_learning") end)
         if ok and value == false then enabled = false end
     end
-    local mode = enabled and ("sentence-v2|rules=" .. (lexicon_state.learning_rules or "") ..
-        "|optimal=" .. tostring(lexicon_state.high_freq_limit) .. "|dup=" .. (active_allow_duplicate_single and "1" or "0")) or ""
+    local mode = enabled and ("整句|规则版本=" .. (lexicon_state.learning_rules or "") ..
+        "|最优码限制=" .. tostring(lexicon_state.high_freq_limit) .. "|单字重码=" .. (active_allow_duplicate_single and "1" or "0")) or ""
     local schema_id = schema and schema.schema_id or "tiger_sentence"
     if env._tiger_learning_schema_id ~= schema_id then
         env._tiger_learning_schema_id = schema_id
-        env._tiger_learning_name = "tiger_sentence_learning_" .. learning.hash(schema_id)
+        env._tiger_learning_name = "自学习-" .. schema_id:gsub('[%%/\\:%z%*%?"<>|%c]', function(c) return string.format("%%%02X", c:byte()) end)
     end
     local name = env._tiger_learning_name
     local live = env._tiger_learning
@@ -4061,8 +4071,8 @@ local function processor(key_event, env)
                     #item.text > #state.committed_text then
                     if visible == target then
                         selected = item
-                        selected._fusion_ahead = {}
-                        for i = 1, #seen do selected._fusion_ahead[i] = seen[i] end
+                        selected._learning_ahead = {}
+                        for i = 1, #seen do selected._learning_ahead[i] = seen[i] end
                         break
                     end
                     seen[#seen + 1] = item
@@ -4391,6 +4401,7 @@ M.lexicon_probe = function(code)
             t = candidates[index].t,
             r = candidates[index].r,
             optimal_single = candidates[index].optimal_single or false,
+            whole_single_reward_eligible = candidates[index].whole_single_reward_eligible or false,
             primary_single = candidates[index].primary_single or false
         }
     end
@@ -4417,7 +4428,7 @@ M.reference_isolation_penalty = isolation_penalty
 M.reference_path_isolation_penalty = ranking_prior.reference_path_isolation_penalty
 M.path_isolation_penalty = path_isolation_penalty
 M.has_complete_candidate = has_complete_candidate
-M.set_allow_duplicate_single = set_allow_duplicate_single
+M.apply_auto_select_min_code_length = lexicon_state.apply_auto_select_min_code_length
 M.build_prefix_evidence = build_prefix_evidence
 M.find_prefix_evidence = find_prefix_evidence
 M.common_text_prefix = common_text_prefix
@@ -4489,6 +4500,8 @@ M.set_decoder_parameters_for_test = function(values)
     rank_penalty = bounded("rank_penalty", rank_penalty, 0, 10, false)
     emitted_character_reward = bounded(
         "emitted_character_reward", emitted_character_reward, -10, 10, false)
+    whole_input_single_character_reward = bounded(
+        "whole_input_single_character_reward", whole_input_single_character_reward, 0, 20, false)
     ranking_prior.canonical_code_reward = bounded(
         "canonical_code_reward", ranking_prior.canonical_code_reward, 0, 10, false)
     ranking_prior.lexical_prior_weight = bounded(
@@ -4511,6 +4524,7 @@ M.decoder_parameters = function()
         long_input_beam_width = long_input_beam_width,
         rank_penalty = rank_penalty,
         emitted_character_reward = emitted_character_reward,
+        whole_input_single_character_reward = whole_input_single_character_reward,
         canonical_code_reward = ranking_prior.canonical_code_reward,
         lexical_prior_weight = ranking_prior.lexical_prior_weight,
         isolation_threshold = isolation_threshold,
@@ -4538,7 +4552,8 @@ M.buffer_filter = function(input, env)
     end
 end
 M.learning = learning
-M.apply_fusion_ordering_for_test = learning.apply_fusion_ordering
+M.apply_source_ordering_for_test = learning.apply_source_ordering
+M.dedup_limit_for_test = dedup_limit
 M.set_learning_for_test = function(index, mode)
     learning_index, learning_mode = index, mode or ""
     reset_decode_cache()
@@ -4570,7 +4585,6 @@ M.options = {};
 (function()
     local defaults = {
         tiger_sentence_early_commit = true,
-        tiger_sentence_allow_duplicate_single = true,
         tiger_sentence_early_commit_to_preedit = false,
         tiger_sentence_key_correction = false
     }
