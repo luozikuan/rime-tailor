@@ -1,0 +1,73 @@
+# Tiger Sentence default punctuation
+# encoding: utf-8
+
+config_version: "1.3"
+
+punctuator:
+  full_shape:
+    " ": { commit: "　" }
+    ",": { commit: ， }
+    ".": { commit: 。 }
+    "<": { commit: 《 }
+    ">": { commit: 》 }
+    "/": { commit: ／ }
+    "?": { commit: ？ }
+    ";": { commit: ； }
+    ":": { commit: ： }
+    "'": { pair: [ "‘", "’" ] }
+    '"': { pair: [ "“", "”" ] }
+    "\\": 、
+    "|": { commit: ｜ }
+    "`": ｀
+    "~": ～
+    "!": { commit: ！ }
+    "@": ＠
+    "#": ＃
+    "%": { commit: ％ }
+    "$": { commit: ￥ }
+    "^": { commit: …… }
+    "&": ＆
+    "*": ＊
+    "(": （
+    ")": ）
+    "-": －
+    "_": ——
+    "+": ＋
+    "=": { commit: ＝ }
+    "[": { commit: 【 }
+    "]": { commit: 】 }
+    "{": { commit: "{" }
+    "}": { commit: "}" }
+  half_shape:
+    ",": { commit: ， }
+    ".": { commit: 。 }
+    "<": { commit: 《 }
+    ">": { commit: 》 }
+    "/": { commit: 、 }
+    "?": { commit: ？ }
+    ";": { commit: ； }
+    ":": { commit: ： }
+    "'": { pair: [ "‘", "’" ] }
+    '"': { pair: [ "“", "”" ] }
+    "\\": 、
+    "|": { commit: "|" }
+    "`": { commit: "`" }
+    "~": { commit: "~" }
+    "!": { commit: ！ }
+    "@": "@"
+    "#": "#"
+    "%": { commit: "%" }
+    "$": { commit: ￥ }
+    "^": { commit: …… }
+    "&": "&"
+    "*": "·"
+    "(": （
+    ")": ）
+    "-": "-"
+    "_": ——
+    "+": "+"
+    "=": { commit: "=" }
+    "[": { commit: 【 }
+    "]": { commit: 】 }
+    "{": { commit: "{" }
+    "}": { commit: "}" }
