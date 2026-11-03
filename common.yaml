@@ -5,7 +5,7 @@ punctuator:
       "\\" : "、"
       "<": "《"
       ">": "》"
-    digit_separators: ".:"
+    digit_separators: ".:*"
     digit_separator_action: commit
 
 switches:
